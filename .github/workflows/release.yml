@@ -72,7 +72,10 @@ jobs:
       - name: Install musl cross (aarch64)
         if: matrix.target == 'aarch64-unknown-linux-musl'
         run: |
-          curl -sSfL https://musl.cc/aarch64-linux-musl-cross.tgz -o /tmp/aarch64-linux-musl-cross.tgz
+          for i in 1 2 3; do
+            curl -sSfL https://musl.cc/aarch64-linux-musl-cross.tgz -o /tmp/aarch64-linux-musl-cross.tgz && break
+            echo "Download failed (attempt $i), retrying in 5s..." && sleep 5
+          done
           sudo tar -xf /tmp/aarch64-linux-musl-cross.tgz -C /opt
           echo "/opt/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
           echo "CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc" >> $GITHUB_ENV
