@@ -109,13 +109,37 @@ jobs:
             cargo build --release --bin xsfx --target ${{ matrix.target }}
           fi
 
+      - name: Self-pack xsfx (compress itself)
+        shell: bash
+        run: |
+          BIN_DIR="target/${{ matrix.target }}/release"
+          BIN_PATH_BUILD="${BIN_DIR}/xsfx"
+          if [[ "${{ matrix.os }}" == windows-latest ]]; then
+            BIN_PATH_BUILD="${BIN_PATH_BUILD}.exe"
+          fi
+
+          PACKED_PATH="${BIN_DIR}/xsfx-packed"
+          if [[ "${{ matrix.os }}" == windows-latest ]]; then
+            PACKED_PATH="${PACKED_PATH}.exe"
+          fi
+
+          # Use the freshly built xsfx to pack itself
+          "$BIN_PATH_BUILD" "$BIN_PATH_BUILD" "$PACKED_PATH"
+
+          # Prefer the packed binary for archiving in the next step
+          echo "BIN_PATH=${PACKED_PATH}" >> $GITHUB_ENV
+
       - name: Archive
         shell: bash
         run: |
-          BIN_PATH=target/${{ matrix.target }}/release/xsfx
+          # Use BIN_PATH from environment if set (e.g., from self-pack step); otherwise default to built binary
+          BIN_PATH="${BIN_PATH:-target/${{ matrix.target }}/release/xsfx}"
           NAME=xsfx-${{ matrix.name }}
           if [[ "${{ matrix.os }}" == windows-latest ]]; then
-            BIN_PATH="${BIN_PATH}.exe"
+            # Ensure .exe extension if not already present
+            if [[ ! "$BIN_PATH" =~ \.exe$ ]]; then
+              BIN_PATH="${BIN_PATH}.exe"
+            fi
             powershell -Command "Compress-Archive -Path $BIN_PATH -DestinationPath ${NAME}.zip"
             echo "ASSET=${NAME}.zip" >> $GITHUB_ENV
           else
