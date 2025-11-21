@@ -110,6 +110,14 @@ jobs:
           fi
 
       - name: Self-pack xsfx (compress itself)
+        # Only run self-pack when the built binary can execute on the current runner
+        # - Linux: only x86_64 targets are runnable on ubuntu-latest runners
+        # - macOS: both arm64 and x86_64 run on their respective macOS runners
+        # - Windows: only x86_64 is runnable on windows-latest runners
+        if: |
+          (startsWith(matrix.os, 'ubuntu') && startsWith(matrix.target, 'x86_64-')) ||
+          (startsWith(matrix.os, 'macos')) ||
+          (matrix.os == 'windows-latest' && matrix.target == 'x86_64-pc-windows-msvc')
         shell: bash
         run: |
           BIN_DIR="target/${{ matrix.target }}/release"
