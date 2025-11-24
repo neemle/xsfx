@@ -78,24 +78,18 @@ jobs:
           fi
 
       - name: Ensure stubs dir
-        run: mkdir -p stubs
+        run: echo "no-op"
 
-      - name: Build stub
+      - name: Build stub (for current target)
         run: cargo build --release --bin stub --target ${{ matrix.target }}
 
-      - name: Copy stub for embed
+      - name: Build packer (default embeds multi-stub catalog)
         shell: bash
         run: |
-          case "${{ matrix.os }}" in
-            macos*)  cp target/${{ matrix.target }}/release/stub stubs/stub-macos ;;
-            ubuntu*) cp target/${{ matrix.target }}/release/stub stubs/stub-linux-x64 ;;
-            windows*) cp target/${{ matrix.target }}/release/stub.exe stubs/stub-windows-x64.exe ;;
-          esac
-
-      - name: Build packer
-        shell: bash
-        run: |
-          export XSFX_STUB_PATH="$GITHUB_WORKSPACE/stubs/$(ls stubs)"
+          # Note: By default, build.rs attempts to embed a full multi-stub catalog.
+          # If you want to limit CI time to the current target only, set
+          #   XSFX_TARGETS=${{ matrix.target }}
+          # before invoking cargo.
           if [ -n "${{ matrix.features }}" ]; then
             cargo build --release --bin xsfx --target ${{ matrix.target }} --features ${{ matrix.features }}
           else
