@@ -53,18 +53,30 @@ fi
 CARGO_VOLUME="xsfx_cargo_cache"
 docker volume inspect "$CARGO_VOLUME" >/dev/null 2>&1 || docker volume create "$CARGO_VOLUME" >/dev/null
 
+# Build docker command as string for debugging
+DOCKER_CMD="docker run --rm"
+DOCKER_CMD+=" --platform $DOCKER_PLATFORM"
+DOCKER_CMD+=" -v \"$PROJECT_DIR\":/project"
+DOCKER_CMD+=" -v $CARGO_VOLUME:/usr/local/cargo/registry"
+DOCKER_CMD+=" -w /project"
+DOCKER_CMD+=" -e RUSTUP_HOME=/usr/local/rustup"
+DOCKER_CMD+=" -e CARGO_HOME=/usr/local/cargo"
+DOCKER_CMD+=" -e PROJECT_DIR=/project"
+DOCKER_CMD+=" -e XSFX_TARGETS=${XSFX_TARGETS:-all}"
+if [ -n "${ALL_STUBS:-}" ]; then
+  DOCKER_CMD+=" -e ALL_STUBS=\"$ALL_STUBS\""
+fi
+if [ -n "${PACKER_TARGETS:-}" ]; then
+  DOCKER_CMD+=" -e PACKER_TARGETS=\"$PACKER_TARGETS\""
+fi
+DOCKER_CMD+=" $IMAGE_TAG"
+
+echo "Debug: Docker command to execute:"
+echo "$DOCKER_CMD"
+echo ""
+
 # Run container and let the image entrypoint perform the build
-docker run --rm \
-  --platform "$DOCKER_PLATFORM" \
-  -v "$PROJECT_DIR":/project \
-  -v "$CARGO_VOLUME":/usr/local/cargo/registry \
-  -w /project \
-  -e RUSTUP_HOME=/usr/local/rustup \
-  -e CARGO_HOME=/usr/local/cargo \
-  -e PROJECT_DIR=/project \
-  -e XSFX_TARGETS=${XSFX_TARGETS:-all} \
-  ${ALL_STUBS:+-e ALL_STUBS="$ALL_STUBS"} \
-  ${PACKER_TARGETS:+-e PACKER_TARGETS="$PACKER_TARGETS"} \
-  "$IMAGE_TAG"
+# Disable Git Bash path conversion for Docker arguments
+MSYS_NO_PATHCONV=1 eval "$DOCKER_CMD"
 
 echo "Build finished. See ./dist for outputs."
