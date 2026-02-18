@@ -61,11 +61,7 @@ fn write_memfd(data: &[u8]) -> io::Result<std::fs::File> {
     use std::os::unix::io::{AsRawFd, FromRawFd};
 
     let fd = unsafe {
-        let r = libc::syscall(
-            libc::SYS_memfd_create,
-            c"rsfx".as_ptr(),
-            libc::MFD_CLOEXEC,
-        );
+        let r = libc::syscall(libc::SYS_memfd_create, c"rsfx".as_ptr(), libc::MFD_CLOEXEC);
         if r < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -85,7 +81,9 @@ fn exec_payload(payload: &[u8], args: &[String], argv0: &Path) -> io::Result<i32
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::io::AsRawFd;
 
-    extern "C" { static environ: *const *const libc::c_char; }
+    extern "C" {
+        static environ: *const *const libc::c_char;
+    }
 
     let memfd = write_memfd(payload)?;
     let c_argv0 = CString::new(argv0.as_os_str().as_bytes())
