@@ -1,29 +1,100 @@
-Rust SFX Packer
-================
+# xsfx
 
-Self-extracting executable builder written in Rust. It embeds a small per-platform stub that unpacks and runs a compressed payload at runtime. By default builds are pure Rust; enabling the optional `native-compress` feature uses `liblzma` via `xz2` for smaller payloads during packing.
+Self-extracting executable packer written in Rust. Compresses a payload binary with LZMA/XZ and bundles it with a per-platform stub that decompresses and executes it in memory at runtime. No temporary files are written on any platform.
 
-Features
-- Pure-Rust stub (lzma-rs) for macOS, Linux, and Windows.
-- Optional native compression for better ratios when building the packer.
-- Single-command packing: `xsfx <payload> <output_sfx>`; stub is embedded at build time.
+Does not modify PE headers, so packed .NET assemblies and other header-sensitive executables remain valid.
 
-Prerequisites
-- Rust toolchain (stable).
-- Docker (for cross-building Linux/Windows stubs and packers from macOS).
-- Payload binary built for the same target as the stub (e.g., Linux payload for Linux stub).
+## Supported Targets
 
-Packer CLI
-```bash
-xsfx <payload_path> <output_sfx>
+Each packer binary embeds stubs for all 9 targets. The target is selected at pack time via `--target`.
+
+| Target | Arch | Execution Method |
+|---|---|---|
+| `x86_64-unknown-linux-gnu` | x64 | `memfd_create` |
+| `aarch64-unknown-linux-gnu` | ARM64 | `memfd_create` |
+| `x86_64-unknown-linux-musl` | x64 | `memfd_create` |
+| `aarch64-unknown-linux-musl` | ARM64 | `memfd_create` |
+| `x86_64-apple-darwin` | x64 | `NSCreateObjectFileImageFromMemory` |
+| `aarch64-apple-darwin` | ARM64 | `NSCreateObjectFileImageFromMemory` |
+| `x86_64-pc-windows-gnu` | x64 | In-process PE loader |
+| `x86_64-pc-windows-msvc` | x64 | In-process PE loader |
+| `aarch64-pc-windows-msvc` | ARM64 | In-process PE loader |
+
+## Usage
+
 ```
-The stub is chosen at build time via `include_bytes!`, so use the packer built for the target you want to produce.
+xsfx <payload> <output_sfx> [--target <triple>]
+```
 
-Compression
-- Default: pure-Rust lzma-rs encoder (slower/weaker compression, smallest vector of dependencies).
-- Better ratios: build packer with `--features native-compress` to use liblzma via `xz2` during packing; the stub remains pure Rust.
+- `payload` -- input binary to pack
+- `output_sfx` -- output path for the self-extracting executable
+- `--target` -- target triple (defaults to the packer's host platform)
 
-Troubleshooting
-- “Permission denied” when running SFX on Unix: `chmod +x dist/your-sfx`.
-- Payload fails to launch: ensure the payload matches the stub/packer target (architecture + OS).
-- Windows SFX creation: must run the Windows packer on Windows.
+Running the packer without arguments lists available targets.
+
+All CLI arguments passed to the SFX at runtime are forwarded to the payload.
+
+## Build
+
+### Cross-build (Docker)
+
+```bash
+./build.sh
+```
+
+Builds packers for all 9 targets into `./dist/`. Requires Docker. The toolchain image is built on first run and cached for subsequent builds.
+
+To build a subset of targets:
+
+```bash
+PACKER_TARGETS="x86_64-unknown-linux-gnu x86_64-pc-windows-msvc" ./build.sh
+```
+
+### Native build (single target)
+
+```bash
+cargo build --release --bin xsfx --features native-compress
+```
+
+Builds a packer for the host platform. The host stub is compiled by `build.rs`.
+
+## Binary Format
+
+```
++------------------------+
+| Stub                   |  per-platform loader (<100 KB)
++------------------------+
+| Compressed payload     |  LZMA/XZ stream
++------------------------+
+| Trailer (16 bytes)     |  payload_len (u64 LE) + magic (u64 LE)
++------------------------+
+```
+
+The stub reads the 16-byte trailer from the end of its own executable, locates and decompresses the payload, then executes it in memory using the platform-specific method listed above.
+
+## Compression
+
+| Mode | Build Flag | Details |
+|---|---|---|
+| Default | _(none)_ | Pure-Rust `lzma-rs` encoder |
+| Native | `--features native-compress` | `liblzma` via `xz2` -- LZMA2 preset 9 extreme, x86 BCJ filter, 64 MiB dictionary |
+
+The stub uses the pure-Rust `lzma-rs` decoder in both modes.
+
+## Prerequisites
+
+- **Docker** -- cross-building via `./build.sh`
+- **Rust stable** -- native single-target builds
+- **Rust nightly** -- used inside the Docker image for stub size optimization (`-Z build-std`, `panic=immediate-abort`)
+
+## Troubleshooting
+
+| Problem | Resolution |
+|---|---|
+| Permission denied on Unix | `chmod +x ./your-sfx` |
+| Payload fails to execute | Verify the payload was built for the same OS and architecture as the `--target` |
+| Stub exceeds 100 KB | Confirm nightly toolchain and UPX are present in the build image |
+
+## License
+
+MIT
