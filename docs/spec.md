@@ -215,8 +215,10 @@ On Unix, argv[0] MUST be overridden to the SFX path via `CommandExt::arg0`.
 ### BR-010: Static Linking Policy
 
 All stub binaries MUST be statically linked:
-- Linux: musl libc (`x86_64-unknown-linux-musl`)
-- Windows: CRT static (`-C target-feature=+crt-static`)
+- Linux musl: `-C target-feature=+crt-static` (required — zig's musl
+  toolchain links dynamically by default, producing a PIE binary that
+  depends on `/lib/ld-musl-x86_64.so.1`)
+- Windows: `-C target-feature=+crt-static`
 - macOS: system frameworks (statically linked by default on macOS)
 
 ### BR-011: Windows In-Memory PE Execution

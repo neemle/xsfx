@@ -34,8 +34,9 @@ for t in "${ALL_STUBS[@]}"; do
 
   STUB_RUSTFLAGS="-Zunstable-options -Cpanic=immediate-abort"
 
-  # Static linking flags
+  # Static linking flags (zig's musl toolchain links dynamically by default)
   case "$t" in
+    *linux-musl*)   STUB_RUSTFLAGS="$STUB_RUSTFLAGS -C target-feature=+crt-static" ;;
     *windows-msvc*) STUB_RUSTFLAGS="$STUB_RUSTFLAGS -C target-feature=+crt-static" ;;
     *windows-gnu*)  STUB_RUSTFLAGS="$STUB_RUSTFLAGS -C target-feature=+crt-static" ;;
   esac

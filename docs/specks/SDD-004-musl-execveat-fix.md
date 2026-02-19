@@ -1,7 +1,7 @@
 # SDD-004 — Fix musl payload/stub compatibility via execveat
 
 **Impacted UCs:** UC-002
-**Impacted BR/WF:** BR-006, BR-013, WF-002
+**Impacted BR/WF:** BR-006, BR-010, BR-013, WF-002
 
 ## Problem
 
@@ -22,6 +22,9 @@ musl itself — musl's behavior is correct per the ELF spec.
 - Replace the Linux stub's `Command`-based fork+exec (via `/proc/self/fd/`)
   with a direct `execveat(fd, "", argv, envp, AT_EMPTY_PATH)` syscall
 - Skip UPX compression for `*-linux-musl` stub targets in the build pipeline
+- Add `-C target-feature=+crt-static` for `*-linux-musl` stub builds (zig's
+  musl toolchain links dynamically by default, producing PIE binaries that
+  depend on `/lib/ld-musl-x86_64.so.1`)
 
 ## Non-goals
 
@@ -40,6 +43,8 @@ musl itself — musl's behavior is correct per the ELF spec.
 - AC-5: UPX compression is skipped for `*-linux-musl` stub targets in the
   build script
 - AC-6: UPX compression remains enabled for all other targets where supported
+- AC-7: Musl stubs are built with `-C target-feature=+crt-static` to force
+  static linking regardless of the cross-linker (zig or native musl-gcc)
 
 ## Security Acceptance Criteria (mandatory)
 
