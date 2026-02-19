@@ -34,9 +34,15 @@ for t in "${ALL_STUBS[@]}"; do
 
   STUB_RUSTFLAGS="-Zunstable-options -Cpanic=immediate-abort"
 
-  # Static linking flags (zig's musl toolchain links dynamically by default)
+  # Static linking flags
+  # musl: Debian's musl-gcc specs use PIE CRT (Scrt1.o) even with -static,
+  # producing a broken non-PIE binary with PIE startup code. Override the
+  # linker so Rust uses its built-in musl support and produces static-pie.
   case "$t" in
-    *linux-musl*)   STUB_RUSTFLAGS="$STUB_RUSTFLAGS -C target-feature=+crt-static" ;;
+    x86_64*linux-musl*)
+      STUB_RUSTFLAGS="$STUB_RUSTFLAGS -C target-feature=+crt-static -C linker=cc" ;;
+    aarch64*linux-musl*)
+      STUB_RUSTFLAGS="$STUB_RUSTFLAGS -C target-feature=+crt-static -C linker=aarch64-linux-gnu-gcc" ;;
     *windows-msvc*) STUB_RUSTFLAGS="$STUB_RUSTFLAGS -C target-feature=+crt-static" ;;
     *windows-gnu*)  STUB_RUSTFLAGS="$STUB_RUSTFLAGS -C target-feature=+crt-static" ;;
   esac

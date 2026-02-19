@@ -22,9 +22,13 @@ musl itself — musl's behavior is correct per the ELF spec.
 - Replace the Linux stub's `Command`-based fork+exec (via `/proc/self/fd/`)
   with a direct `execveat(fd, "", argv, envp, AT_EMPTY_PATH)` syscall
 - Skip UPX compression for `*-linux-musl` stub targets in the build pipeline
-- Add `-C target-feature=+crt-static` for `*-linux-musl` stub builds (zig's
-  musl toolchain links dynamically by default, producing PIE binaries that
-  depend on `/lib/ld-musl-x86_64.so.1`)
+- Override the linker for `*-linux-musl` stub builds: use `cc` (x86_64)
+  or `aarch64-linux-gnu-gcc` (aarch64) instead of `musl-gcc` / zig.
+  Debian's `musl-gcc` specs use PIE CRT (`Scrt1.o`) unconditionally —
+  combining this with `-static` produces a broken non-PIE binary with
+  PIE startup code that segfaults at entry. Rust's built-in musl support
+  with the system linker and `-C target-feature=+crt-static` produces
+  correct static-pie binaries (no INTERP, self-contained).
 
 ## Non-goals
 
@@ -43,8 +47,11 @@ musl itself — musl's behavior is correct per the ELF spec.
 - AC-5: UPX compression is skipped for `*-linux-musl` stub targets in the
   build script
 - AC-6: UPX compression remains enabled for all other targets where supported
-- AC-7: Musl stubs are built with `-C target-feature=+crt-static` to force
-  static linking regardless of the cross-linker (zig or native musl-gcc)
+- AC-7: Musl stubs are built with `-C target-feature=+crt-static` and
+  `-C linker=cc` (x86_64) or `-C linker=aarch64-linux-gnu-gcc` (aarch64)
+  to force static linking with the system linker instead of musl-gcc.
+  The resulting binary MUST have no INTERP header, no DYNAMIC section,
+  and `file` MUST report `statically linked`
 
 ## Security Acceptance Criteria (mandatory)
 

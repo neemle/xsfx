@@ -215,9 +215,12 @@ On Unix, argv[0] MUST be overridden to the SFX path via `CommandExt::arg0`.
 ### BR-010: Static Linking Policy
 
 All stub binaries MUST be statically linked:
-- Linux musl: `-C target-feature=+crt-static` (required — zig's musl
-  toolchain links dynamically by default, producing a PIE binary that
-  depends on `/lib/ld-musl-x86_64.so.1`)
+- Linux musl: `-C target-feature=+crt-static` with the default system
+  linker (`cc` / `aarch64-linux-gnu-gcc`), NOT `musl-gcc` or zig.
+  Debian's `musl-gcc` specs use PIE CRT (`Scrt1.o`) unconditionally,
+  producing broken binaries when combined with `-static`. Rust's
+  built-in musl support with the system linker produces correct
+  static-pie binaries.
 - Windows: `-C target-feature=+crt-static`
 - macOS: system frameworks (statically linked by default on macOS)
 
