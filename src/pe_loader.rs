@@ -411,17 +411,16 @@ unsafe fn resolve_imports(base: *mut u8, _pe_bytes: &[u8], headers: &PeHeaders) 
                 break;
             }
 
-            let proc_addr;
-            if thunk_data & (1u64 << 63) != 0 {
+            let proc_addr = if thunk_data & (1u64 << 63) != 0 {
                 // Import by ordinal
                 let ordinal = (thunk_data & 0xFFFF) as u16;
-                proc_addr = GetProcAddress(dll_handle, ordinal as usize as *const u8);
+                GetProcAddress(dll_handle, ordinal as usize as *const u8)
             } else {
                 // Import by name (skip 2-byte hint)
                 let hint_name_rva = (thunk_data & 0x7FFF_FFFF) as u32;
                 let func_name_ptr = base.add(hint_name_rva as usize + 2);
-                proc_addr = GetProcAddress(dll_handle, func_name_ptr);
-            }
+                GetProcAddress(dll_handle, func_name_ptr)
+            };
 
             if proc_addr == 0 {
                 return Err(io::Error::other("Failed to resolve import"));

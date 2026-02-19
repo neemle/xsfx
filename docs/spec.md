@@ -184,8 +184,10 @@ Payloads MUST use XZ/LZMA format, decompressible by lzma-rs `xz_decompress`.
 ### BR-004: Compression Implementation Selection
 
 With `native-compress` feature: use liblzma via xz2 with ultra compression
-(LZMA2 extreme preset 9, x86 BCJ filter, 64 MiB dictionary, BinaryTree4,
-nice_len=273). Without: use pure-Rust lzma-rs (standard settings).
+(LZMA2 extreme preset 9, 64 MiB dictionary, BinaryTree4, nice_len=273).
+No BCJ pre-filter — the stub decompresses with pure-Rust lzma-rs which
+only supports the LZMA2 filter. Without: use pure-Rust lzma-rs (standard
+settings).
 
 ### BR-005: Decompression Implementation
 
@@ -250,8 +252,9 @@ startup to misidentify the binary as a dynamic linker and exit 127.
 ### BR-014: Ultra Payload Compression
 
 When the `native-compress` feature is enabled, the packer MUST use LZMA2 ultra
-compression: extreme preset 9, x86 BCJ pre-filter, 64 MiB dictionary (capped
-to input size), BinaryTree4 match finder, nice_len=273. The stub decompressor
+compression: extreme preset 9, 64 MiB dictionary (capped to input size),
+BinaryTree4 match finder, nice_len=273. No BCJ pre-filter — lzma-rs (used
+by the stub) only supports the LZMA2 filter (ID 0x21). The stub decompressor
 (pure-Rust lzma-rs) MUST be able to decompress the resulting stream.
 
 ---

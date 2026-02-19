@@ -32,8 +32,9 @@ pub fn compress_lzma(data: &[u8]) -> io::Result<Vec<u8>> {
     }
 }
 
-/// Ultra compression: LZMA2 extreme preset 9 + x86 BCJ filter +
-/// 64 MiB dictionary + BinaryTree4 + nice_len=273.
+/// Ultra compression: LZMA2 extreme preset 9 + 64 MiB dictionary +
+/// BinaryTree4 + nice_len=273. No BCJ pre-filter — lzma-rs (used by
+/// the stub for decompression) only supports the LZMA2 filter.
 #[cfg(feature = "native-compress")]
 fn compress_ultra(data: &[u8]) -> io::Result<Vec<u8>> {
     let map = io::Error::other;
@@ -46,7 +47,6 @@ fn compress_ultra(data: &[u8]) -> io::Result<Vec<u8>> {
     opts.nice_len(273);
 
     let mut filters = Filters::new();
-    filters.x86();
     filters.lzma2(&opts);
 
     let stream = Stream::new_stream_encoder(&filters, Check::Crc64).map_err(map)?;
