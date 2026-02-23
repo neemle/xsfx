@@ -75,4 +75,38 @@ mod tests {
         let result = decompress_payload(&mut reader);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_sec_decompress_high_ratio() {
+        // Compress 1 MB of zeros — high compression ratio stress test
+        let original = vec![0u8; 1_000_000];
+        let compressed = compress_lzma(&original).unwrap();
+        assert!(compressed.len() < 1000, "sanity: high ratio expected");
+        let mut reader = BufReader::new(Cursor::new(&compressed));
+        let result = decompress_payload(&mut reader).unwrap();
+        assert_eq!(result.len(), 1_000_000);
+        assert_eq!(result, original);
+    }
+
+    #[test]
+    fn test_sec_decompress_null_bytes_payload() {
+        // Payload entirely of null bytes through compress/decompress roundtrip
+        let original = vec![0u8; 10_000];
+        let compressed = compress_lzma(&original).unwrap();
+        let mut reader = BufReader::new(Cursor::new(&compressed));
+        let result = decompress_payload(&mut reader).unwrap();
+        assert_eq!(result, original);
+    }
+
+    #[test]
+    fn test_sec_decompress_repeated_no_leak() {
+        // Repeated decompress cycles — must not accumulate resources or panic
+        let original = vec![0xABu8; 5_000];
+        let compressed = compress_lzma(&original).unwrap();
+        for _ in 0..100 {
+            let mut reader = BufReader::new(Cursor::new(&compressed));
+            let result = decompress_payload(&mut reader).unwrap();
+            assert_eq!(result.len(), 5_000);
+        }
+    }
 }

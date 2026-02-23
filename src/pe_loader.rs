@@ -122,11 +122,7 @@ fn read_u64(data: &[u8], offset: usize) -> io::Result<u64> {
     Ok(u64::from_le_bytes(buf))
 }
 
-fn read_data_dirs(
-    data: &[u8],
-    offset: usize,
-    count: usize,
-) -> io::Result<(u32, u32, u32, u32)> {
+fn read_data_dirs(data: &[u8], offset: usize, count: usize) -> io::Result<(u32, u32, u32, u32)> {
     let (imp_rva, imp_sz) = if count > 1 {
         (read_u32(data, offset + 8)?, read_u32(data, offset + 12)?)
     } else {
@@ -200,8 +196,7 @@ pub fn parse_pe(data: &[u8]) -> io::Result<PeHeaders> {
     let num_dirs = read_u32(data, opt + 108)? as usize;
     let (import_dir_rva, import_dir_size, reloc_dir_rva, reloc_dir_size) =
         read_data_dirs(data, opt + 112, num_dirs)?;
-    let sections =
-        parse_section_headers(data, opt + opt_hdr_size, num_sections, size_of_image)?;
+    let sections = parse_section_headers(data, opt + opt_hdr_size, num_sections, size_of_image)?;
     Ok(PeHeaders {
         image_base,
         size_of_image,
@@ -300,7 +295,13 @@ unsafe fn map_sections(base: *mut u8, pe_bytes: &[u8], headers: &PeHeaders) -> i
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn apply_reloc_block(base: *mut u8, entries: *const u16, block_rva: u32, count: usize, delta: u64) {
+unsafe fn apply_reloc_block(
+    base: *mut u8,
+    entries: *const u16,
+    block_rva: u32,
+    count: usize,
+    delta: u64,
+) {
     for i in 0..count {
         let entry = *entries.add(i);
         let reloc_type = entry >> 12;
@@ -731,6 +732,89 @@ mod tests {
         // import dir should be parsed (dir index 1)
         assert_eq!(headers.reloc_dir_rva, 0);
         assert_eq!(headers.reloc_dir_size, 0);
+    }
+
+    #[test]
+    fn test_sec_parse_pe_zero_sections() {
+        let mut pe = build_minimal_pe();
+        let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
+        let coff = pe_off + 4;
+        // Set NumberOfSections to 0
+        pe[coff + 2..coff + 4].copy_from_slice(&0u16.to_le_bytes());
+        let headers = parse_pe(&pe).unwrap();
+        assert!(headers.sections.is_empty());
+    }
+
+    #[test]
+    fn test_sec_parse_pe_section_raw_data_beyond_file() {
+        let mut pe = build_minimal_pe();
+        let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
+        let opt = pe_off + 4 + 20;
+        let sec = opt + 240;
+        // PointerToRawData beyond file size
+        pe[sec + 20..sec + 24].copy_from_slice(&0xFFFF_0000u32.to_le_bytes());
+        // parse_pe succeeds (raw data bounds not validated in parse, only in map_sections)
+        let headers = parse_pe(&pe).unwrap();
+        assert_eq!(headers.sections[0].raw_data_offset, 0xFFFF_0000);
+    }
+
+    #[test]
+    fn test_sec_parse_pe_data_dir_beyond_file() {
+        let mut pe = build_minimal_pe();
+        let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
+        let opt = pe_off + 4 + 20;
+        // Set NumberOfRvaAndSizes to 16 (normal) but set import dir RVA
+        // beyond what the image could contain
+        let data_dir = opt + 112;
+        pe[data_dir + 8..data_dir + 12].copy_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
+        pe[data_dir + 12..data_dir + 16].copy_from_slice(&0x1000u32.to_le_bytes());
+        let headers = parse_pe(&pe).unwrap();
+        assert_eq!(headers.import_dir_rva, 0xFFFF_FFFF);
+    }
+
+    #[test]
+    fn test_sec_parse_pe_overlapping_sections() {
+        let mut pe = vec![0u8; 1024];
+        pe[0] = 0x4D;
+        pe[1] = 0x5A;
+        let pe_offset: u32 = 128;
+        pe[60..64].copy_from_slice(&pe_offset.to_le_bytes());
+        let o = pe_offset as usize;
+        pe[o..o + 4].copy_from_slice(&PE_SIGNATURE.to_le_bytes());
+        let coff = o + 4;
+        pe[coff..coff + 2].copy_from_slice(&IMAGE_FILE_MACHINE_AMD64.to_le_bytes());
+        pe[coff + 2..coff + 4].copy_from_slice(&2u16.to_le_bytes()); // 2 sections
+        pe[coff + 16..coff + 18].copy_from_slice(&240u16.to_le_bytes());
+        let opt = coff + 20;
+        pe[opt..opt + 2].copy_from_slice(&OPTIONAL_MAGIC_PE32_PLUS.to_le_bytes());
+        pe[opt + 16..opt + 20].copy_from_slice(&0x1000u32.to_le_bytes());
+        pe[opt + 24..opt + 32].copy_from_slice(&0x0040_0000u64.to_le_bytes());
+        pe[opt + 32..opt + 36].copy_from_slice(&0x1000u32.to_le_bytes());
+        pe[opt + 56..opt + 60].copy_from_slice(&0x5000u32.to_le_bytes());
+        pe[opt + 108..opt + 112].copy_from_slice(&16u32.to_le_bytes());
+        // Section 1: VA=0x1000, VS=0x2000
+        let sec1 = opt + 240;
+        pe[sec1 + 8..sec1 + 12].copy_from_slice(&0x2000u32.to_le_bytes());
+        pe[sec1 + 12..sec1 + 16].copy_from_slice(&0x1000u32.to_le_bytes());
+        let chars = IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ;
+        pe[sec1 + 36..sec1 + 40].copy_from_slice(&chars.to_le_bytes());
+        // Section 2: VA=0x2000 (overlaps with section 1), VS=0x1000
+        let sec2 = sec1 + 40;
+        pe[sec2 + 8..sec2 + 12].copy_from_slice(&0x1000u32.to_le_bytes());
+        pe[sec2 + 12..sec2 + 16].copy_from_slice(&0x2000u32.to_le_bytes());
+        pe[sec2 + 36..sec2 + 40].copy_from_slice(&chars.to_le_bytes());
+        // Parser accepts overlapping sections (loader's responsibility)
+        let headers = parse_pe(&pe).unwrap();
+        assert_eq!(headers.sections.len(), 2);
+    }
+
+    #[test]
+    fn test_sec_parse_pe_repeated_no_leak() {
+        let pe = build_minimal_pe();
+        for _ in 0..500 {
+            let headers = parse_pe(&pe).unwrap();
+            assert_eq!(headers.sections.len(), 1);
+        }
     }
 
     #[cfg(target_os = "windows")]

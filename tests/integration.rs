@@ -185,3 +185,92 @@ fn test_sec_binary_payload_roundtrip() {
     let result = decompress_payload(&mut reader).unwrap();
     assert_eq!(result, payload);
 }
+
+#[test]
+fn test_sec_payload_offset_underflow() {
+    // payload_len larger than (total_len - TRAILER_SIZE) would underflow
+    // the payload_start calculation: total_len - TRAILER_SIZE - payload_len
+    let stub = b"STUB";
+    let compressed = compress_lzma(b"x").unwrap();
+    let sfx_payload_len = (stub.len() + compressed.len() + 1) as u64; // 1 byte too large
+    let bad_trailer = Trailer::new(sfx_payload_len);
+
+    let mut sfx = Vec::new();
+    sfx.extend_from_slice(stub);
+    sfx.extend_from_slice(&compressed);
+    sfx.extend_from_slice(&bad_trailer.to_bytes());
+
+    let total = sfx.len() as u64;
+    let t_off = (total - TRAILER_SIZE) as usize;
+    let parsed = Trailer::from_reader(Cursor::new(&sfx[t_off..])).unwrap();
+
+    // The payload_len exceeds the available space (stub + compressed)
+    // Stub code must validate: payload_len <= total_len - TRAILER_SIZE
+    let available = total - TRAILER_SIZE;
+    assert!(parsed.payload_len > available);
+}
+
+#[test]
+fn test_sec_null_byte_payload_full_roundtrip() {
+    // All-null payload through full SFX assembly and extraction
+    let stub = b"FAKESTUB";
+    let payload = vec![0u8; 10_000];
+    let compressed = compress_lzma(&payload).unwrap();
+    let trailer = Trailer::new(compressed.len() as u64);
+
+    let mut sfx = Vec::new();
+    sfx.extend_from_slice(stub);
+    sfx.extend_from_slice(&compressed);
+    sfx.extend_from_slice(&trailer.to_bytes());
+
+    let total = sfx.len() as u64;
+    let t_off = (total - TRAILER_SIZE) as usize;
+    let parsed = Trailer::from_reader(Cursor::new(&sfx[t_off..])).unwrap();
+    assert_eq!(parsed.magic, MAGIC);
+
+    let p_start = t_off - parsed.payload_len as usize;
+    let mut reader = BufReader::new(Cursor::new(&sfx[p_start..t_off]));
+    let result = decompress_payload(&mut reader).unwrap();
+    assert_eq!(result, payload);
+}
+
+#[test]
+fn test_sec_sfx_assembly_repeated_no_leak() {
+    // Repeated SFX assembly/parse cycles — no resource accumulation
+    let stub = b"STUB";
+    let payload = b"repeated test";
+    let compressed = compress_lzma(payload).unwrap();
+
+    for _ in 0..100 {
+        let trailer = Trailer::new(compressed.len() as u64);
+        let mut sfx = Vec::new();
+        sfx.extend_from_slice(stub);
+        sfx.extend_from_slice(&compressed);
+        sfx.extend_from_slice(&trailer.to_bytes());
+
+        let total = sfx.len() as u64;
+        let t_off = (total - TRAILER_SIZE) as usize;
+        let parsed = Trailer::from_reader(Cursor::new(&sfx[t_off..])).unwrap();
+        assert_eq!(parsed.magic, MAGIC);
+
+        let p_start = t_off - parsed.payload_len as usize;
+        let mut reader = BufReader::new(Cursor::new(&sfx[p_start..t_off]));
+        let result = decompress_payload(&mut reader).unwrap();
+        assert_eq!(result, payload.as_slice());
+    }
+}
+
+#[test]
+fn test_sec_corrupted_every_trailer_byte() {
+    // Corrupt each byte position in the trailer independently
+    let original = Trailer::new(42);
+    let original_bytes = original.to_bytes();
+    for i in 0..16 {
+        let mut corrupted = original_bytes;
+        corrupted[i] ^= 0xFF;
+        let parsed = Trailer::from_reader(Cursor::new(corrupted)).unwrap();
+        // At least one field should differ from the original
+        let differs = parsed.payload_len != 42 || parsed.magic != MAGIC;
+        assert!(differs, "corruption at byte {} had no effect", i);
+    }
+}

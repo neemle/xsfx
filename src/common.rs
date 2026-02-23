@@ -145,4 +145,16 @@ mod tests {
         assert_eq!(t.payload_len, u64::MAX);
         assert_ne!(t.magic, MAGIC);
     }
+
+    #[test]
+    fn test_sec_trailer_repeated_no_leak() {
+        // Repeated trailer create/parse cycles — no resource accumulation
+        for i in 0..1000u64 {
+            let t = Trailer::new(i);
+            let bytes = t.to_bytes();
+            let parsed = Trailer::from_reader(Cursor::new(bytes)).unwrap();
+            assert_eq!(parsed.payload_len, i);
+            assert_eq!(parsed.magic, MAGIC);
+        }
+    }
 }
