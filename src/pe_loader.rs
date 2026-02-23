@@ -72,6 +72,10 @@ pub struct SectionInfo {
     pub characteristics: u32,
 }
 
+fn pe_err(msg: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, msg)
+}
+
 fn read_u16(data: &[u8], offset: usize) -> io::Result<u16> {
     let end = offset
         .checked_add(2)
@@ -118,122 +122,86 @@ fn read_u64(data: &[u8], offset: usize) -> io::Result<u64> {
     Ok(u64::from_le_bytes(buf))
 }
 
-/// Parse PE headers from raw bytes. Cross-platform (pure byte parsing).
-pub fn parse_pe(data: &[u8]) -> io::Result<PeHeaders> {
-    if data.len() < 64 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "PE too small for DOS header",
-        ));
-    }
-
-    let dos_magic = read_u16(data, 0)?;
-    if dos_magic != DOS_MAGIC {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Invalid DOS signature",
-        ));
-    }
-
-    let pe_offset = read_u32(data, 60)? as usize;
-    let sig = read_u32(data, pe_offset)?;
-    if sig != PE_SIGNATURE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Invalid PE signature",
-        ));
-    }
-
-    let coff_offset = pe_offset + 4;
-    let machine = read_u16(data, coff_offset)?;
-    if machine != IMAGE_FILE_MACHINE_AMD64 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Unsupported PE machine type (only x64)",
-        ));
-    }
-
-    let num_sections = read_u16(data, coff_offset + 2)? as usize;
-    let optional_hdr_size = read_u16(data, coff_offset + 16)? as usize;
-    let optional_offset = coff_offset + 20;
-
-    if optional_hdr_size < 112 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "PE optional header too small",
-        ));
-    }
-
-    let opt_magic = read_u16(data, optional_offset)?;
-    if opt_magic != OPTIONAL_MAGIC_PE32_PLUS {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Not a PE32+ (64-bit) image",
-        ));
-    }
-
-    let entry_point_rva = read_u32(data, optional_offset + 16)?;
-    let image_base = read_u64(data, optional_offset + 24)?;
-    let section_alignment = read_u32(data, optional_offset + 32)?;
-    let size_of_image = read_u32(data, optional_offset + 56)?;
-
-    let num_data_dirs = read_u32(data, optional_offset + 108)? as usize;
-    let data_dir_offset = optional_offset + 112;
-
-    let import_dir_rva;
-    let import_dir_size;
-    if num_data_dirs > 1 {
-        import_dir_rva = read_u32(data, data_dir_offset + 8)?;
-        import_dir_size = read_u32(data, data_dir_offset + 12)?;
+fn read_data_dirs(
+    data: &[u8],
+    offset: usize,
+    count: usize,
+) -> io::Result<(u32, u32, u32, u32)> {
+    let (imp_rva, imp_sz) = if count > 1 {
+        (read_u32(data, offset + 8)?, read_u32(data, offset + 12)?)
     } else {
-        import_dir_rva = 0;
-        import_dir_size = 0;
-    }
-
-    let reloc_dir_rva;
-    let reloc_dir_size;
-    if num_data_dirs > 5 {
-        reloc_dir_rva = read_u32(data, data_dir_offset + 40)?;
-        reloc_dir_size = read_u32(data, data_dir_offset + 44)?;
+        (0, 0)
+    };
+    let (rel_rva, rel_sz) = if count > 5 {
+        (read_u32(data, offset + 40)?, read_u32(data, offset + 44)?)
     } else {
-        reloc_dir_rva = 0;
-        reloc_dir_size = 0;
+        (0, 0)
+    };
+    Ok((imp_rva, imp_sz, rel_rva, rel_sz))
+}
+
+fn parse_section_headers(
+    data: &[u8],
+    offset: usize,
+    count: usize,
+    image_size: u32,
+) -> io::Result<Vec<SectionInfo>> {
+    if count > 96 {
+        return Err(pe_err("Too many PE sections"));
     }
-
-    let sections_offset = optional_offset + optional_hdr_size;
-    let mut sections = Vec::with_capacity(num_sections);
-
-    if num_sections > 96 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Too many PE sections",
-        ));
-    }
-
-    for i in 0..num_sections {
-        let s = sections_offset + i * 40;
+    let mut sections = Vec::with_capacity(count);
+    for i in 0..count {
+        let s = offset + i * 40;
         let virtual_size = read_u32(data, s + 8)?;
         let virtual_address = read_u32(data, s + 12)?;
-        let raw_data_size = read_u32(data, s + 16)?;
-        let raw_data_offset = read_u32(data, s + 20)?;
-        let characteristics = read_u32(data, s + 36)?;
-
-        if (virtual_address as u64) + (virtual_size as u64) > size_of_image as u64 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "PE section exceeds image size",
-            ));
+        if (virtual_address as u64) + (virtual_size as u64) > image_size as u64 {
+            return Err(pe_err("PE section exceeds image size"));
         }
-
         sections.push(SectionInfo {
             virtual_address,
             virtual_size,
-            raw_data_offset,
-            raw_data_size,
-            characteristics,
+            raw_data_offset: read_u32(data, s + 20)?,
+            raw_data_size: read_u32(data, s + 16)?,
+            characteristics: read_u32(data, s + 36)?,
         });
     }
+    Ok(sections)
+}
 
+/// Parse PE headers from raw bytes. Cross-platform (pure byte parsing).
+pub fn parse_pe(data: &[u8]) -> io::Result<PeHeaders> {
+    if data.len() < 64 {
+        return Err(pe_err("PE too small for DOS header"));
+    }
+    if read_u16(data, 0)? != DOS_MAGIC {
+        return Err(pe_err("Invalid DOS signature"));
+    }
+    let pe_offset = read_u32(data, 60)? as usize;
+    if read_u32(data, pe_offset)? != PE_SIGNATURE {
+        return Err(pe_err("Invalid PE signature"));
+    }
+    let coff = pe_offset + 4;
+    if read_u16(data, coff)? != IMAGE_FILE_MACHINE_AMD64 {
+        return Err(pe_err("Unsupported PE machine type (only x64)"));
+    }
+    let num_sections = read_u16(data, coff + 2)? as usize;
+    let opt_hdr_size = read_u16(data, coff + 16)? as usize;
+    if opt_hdr_size < 112 {
+        return Err(pe_err("PE optional header too small"));
+    }
+    let opt = coff + 20;
+    if read_u16(data, opt)? != OPTIONAL_MAGIC_PE32_PLUS {
+        return Err(pe_err("Not a PE32+ (64-bit) image"));
+    }
+    let entry_point_rva = read_u32(data, opt + 16)?;
+    let image_base = read_u64(data, opt + 24)?;
+    let section_alignment = read_u32(data, opt + 32)?;
+    let size_of_image = read_u32(data, opt + 56)?;
+    let num_dirs = read_u32(data, opt + 108)? as usize;
+    let (import_dir_rva, import_dir_size, reloc_dir_rva, reloc_dir_size) =
+        read_data_dirs(data, opt + 112, num_dirs)?;
+    let sections =
+        parse_section_headers(data, opt + opt_hdr_size, num_sections, size_of_image)?;
     Ok(PeHeaders {
         image_base,
         size_of_image,
@@ -332,48 +300,74 @@ unsafe fn map_sections(base: *mut u8, pe_bytes: &[u8], headers: &PeHeaders) -> i
 }
 
 #[cfg(target_os = "windows")]
+unsafe fn apply_reloc_block(base: *mut u8, entries: *const u16, block_rva: u32, count: usize, delta: u64) {
+    for i in 0..count {
+        let entry = *entries.add(i);
+        let reloc_type = entry >> 12;
+        let reloc_offset = (entry & 0x0FFF) as u32;
+        match reloc_type {
+            IMAGE_REL_BASED_DIR64 => {
+                let addr = base.add((block_rva + reloc_offset) as usize) as *mut u64;
+                *addr = (*addr).wrapping_add(delta);
+            }
+            IMAGE_REL_BASED_ABSOLUTE => {}
+            _ => {}
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
 unsafe fn process_relocations(base: *mut u8, headers: &PeHeaders) -> io::Result<()> {
     if headers.reloc_dir_rva == 0 || headers.reloc_dir_size == 0 {
         return Ok(());
     }
-
     let delta = (base as u64).wrapping_sub(headers.image_base);
     if delta == 0 {
         return Ok(());
     }
-
     let reloc_base = base.add(headers.reloc_dir_rva as usize);
     let mut offset: usize = 0;
     let total = headers.reloc_dir_size as usize;
-
     while offset + 8 <= total {
         let block_rva = *(reloc_base.add(offset) as *const u32);
         let block_size = *(reloc_base.add(offset + 4) as *const u32);
         if block_size < 8 {
             break;
         }
-
-        let entry_count = ((block_size as usize) - 8) / 2;
-        let entries_ptr = reloc_base.add(offset + 8) as *const u16;
-
-        for i in 0..entry_count {
-            let entry = *entries_ptr.add(i);
-            let reloc_type = entry >> 12;
-            let reloc_offset = (entry & 0x0FFF) as u32;
-
-            match reloc_type {
-                IMAGE_REL_BASED_DIR64 => {
-                    let addr = base.add((block_rva + reloc_offset) as usize) as *mut u64;
-                    *addr = (*addr).wrapping_add(delta);
-                }
-                IMAGE_REL_BASED_ABSOLUTE => {}
-                _ => {}
-            }
-        }
-
+        let count = ((block_size as usize) - 8) / 2;
+        let entries = reloc_base.add(offset + 8) as *const u16;
+        apply_reloc_block(base, entries, block_rva, count, delta);
         offset += block_size as usize;
     }
+    Ok(())
+}
 
+#[cfg(target_os = "windows")]
+unsafe fn resolve_thunks(
+    base: *mut u8,
+    dll_handle: usize,
+    lookup_rva: u32,
+    iat_rva: u32,
+) -> io::Result<()> {
+    let mut thunk_offset: usize = 0;
+    loop {
+        let thunk_data = *(base.add(lookup_rva as usize + thunk_offset) as *const u64);
+        if thunk_data == 0 {
+            break;
+        }
+        let proc_addr = if thunk_data & (1u64 << 63) != 0 {
+            let ordinal = (thunk_data & 0xFFFF) as u16;
+            GetProcAddress(dll_handle, ordinal as usize as *const u8)
+        } else {
+            let hint_name_rva = (thunk_data & 0x7FFF_FFFF) as u32;
+            GetProcAddress(dll_handle, base.add(hint_name_rva as usize + 2))
+        };
+        if proc_addr == 0 {
+            return Err(io::Error::other("Failed to resolve import"));
+        }
+        *(base.add(iat_rva as usize + thunk_offset) as *mut u64) = proc_addr as u64;
+        thunk_offset += 8;
+    }
     Ok(())
 }
 
@@ -382,59 +376,23 @@ unsafe fn resolve_imports(base: *mut u8, _pe_bytes: &[u8], headers: &PeHeaders) 
     if headers.import_dir_rva == 0 || headers.import_dir_size == 0 {
         return Ok(());
     }
-
     let import_base = base.add(headers.import_dir_rva as usize);
     let mut desc_offset: usize = 0;
-
     loop {
         let ilt_rva = *(import_base.add(desc_offset) as *const u32);
         let name_rva = *(import_base.add(desc_offset + 12) as *const u32);
         let iat_rva = *(import_base.add(desc_offset + 16) as *const u32);
-
         if ilt_rva == 0 && name_rva == 0 && iat_rva == 0 {
             break;
         }
-
-        let dll_name_ptr = base.add(name_rva as usize);
-        let dll_handle = LoadLibraryA(dll_name_ptr);
+        let dll_handle = LoadLibraryA(base.add(name_rva as usize));
         if dll_handle == 0 {
             return Err(io::Error::other("Failed to load DLL"));
         }
-
         let lookup_rva = if ilt_rva != 0 { ilt_rva } else { iat_rva };
-        let mut thunk_offset: usize = 0;
-
-        loop {
-            let lookup_ptr = base.add(lookup_rva as usize + thunk_offset) as *const u64;
-            let thunk_data = *lookup_ptr;
-            if thunk_data == 0 {
-                break;
-            }
-
-            let proc_addr = if thunk_data & (1u64 << 63) != 0 {
-                // Import by ordinal
-                let ordinal = (thunk_data & 0xFFFF) as u16;
-                GetProcAddress(dll_handle, ordinal as usize as *const u8)
-            } else {
-                // Import by name (skip 2-byte hint)
-                let hint_name_rva = (thunk_data & 0x7FFF_FFFF) as u32;
-                let func_name_ptr = base.add(hint_name_rva as usize + 2);
-                GetProcAddress(dll_handle, func_name_ptr)
-            };
-
-            if proc_addr == 0 {
-                return Err(io::Error::other("Failed to resolve import"));
-            }
-
-            let iat_ptr = base.add(iat_rva as usize + thunk_offset) as *mut u64;
-            *iat_ptr = proc_addr as u64;
-
-            thunk_offset += 8;
-        }
-
+        resolve_thunks(base, dll_handle, lookup_rva, iat_rva)?;
         desc_offset += 20;
     }
-
     Ok(())
 }
 

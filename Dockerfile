@@ -3,7 +3,7 @@
 # ===========================================================================
 # Stage: test — lightweight image for fmt + clippy + coverage + audit
 # ===========================================================================
-FROM rust:1.93-slim-bookworm AS base
+FROM rust:1.93.1-slim-bookworm AS base
 
 ARG EXTRA_CA_CERTS=""
 
@@ -44,7 +44,7 @@ CMD cargo fmt --all -- --check \
 # Stage: cross — heavyweight image with ALL cross-compilation toolchains
 # Supports: Linux gnu+musl, macOS via osxcross, Windows via mingw+xwin
 # ===========================================================================
-FROM rust:1.93-bookworm AS cross
+FROM rust:1.93.1-bookworm AS cross
 
 ARG MAC_SDK_URL=https://github.com/joseluisq/macosx-sdks/releases/download/15.2/MacOSX15.2.sdk.tar.xz
 
