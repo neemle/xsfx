@@ -141,7 +141,15 @@ fn build_stub(target: &str, target_dir: &Path) -> Result<PathBuf, Box<dyn std::e
     let cargo = env::var("CARGO")?;
     let mut cmd = Command::new(cargo);
     cmd.env("XSFX_SKIP_STUB_BUILD", "1");
-    cmd.args(["build", "--bin", "stub", "--release", "--target", target]);
+    cmd.args([
+        "build",
+        "--no-default-features",
+        "--bin",
+        "stub",
+        "--release",
+        "--target",
+        target,
+    ]);
     cmd.arg("--target-dir").arg(target_dir);
 
     println!(

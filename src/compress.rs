@@ -66,8 +66,10 @@ mod tests {
     use lzma_rs::xz_decompress;
     use std::io::{BufReader, Cursor, Write};
 
+    #[cfg(not(feature = "native-compress"))]
     struct FailWriter;
 
+    #[cfg(not(feature = "native-compress"))]
     impl io::Write for FailWriter {
         fn write(&mut self, _: &[u8]) -> io::Result<usize> {
             Err(io::Error::new(io::ErrorKind::BrokenPipe, "forced failure"))
@@ -155,6 +157,7 @@ mod tests {
         assert_eq!(decompressed, data);
     }
 
+    #[cfg(not(feature = "native-compress"))]
     #[test]
     fn test_sec_compress_write_error() {
         let mut fw = FailWriter;

@@ -17,7 +17,7 @@ xsfx has no runtime configuration. All settings are applied at build time.
 
 | Feature            | Default | Description                                   |
 |--------------------|---------|-----------------------------------------------|
-| `native-compress`  | Off     | Use liblzma via xz2 for ultra compression (LZMA2 extreme preset 9, 64 MiB dictionary). Produces smaller payloads. Requires `liblzma-dev` on Linux. The stub always uses pure-Rust lzma-rs regardless. |
+| `native-compress`  | **On**  | Use liblzma via xz2 for ultra compression (LZMA2 extreme preset 9, 64 MiB dictionary). liblzma is statically linked from vendored source — no system `liblzma-dev` needed. The stub always uses pure-Rust lzma-rs regardless. |
 
 ### Release Profile
 

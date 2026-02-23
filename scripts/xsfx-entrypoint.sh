@@ -48,6 +48,7 @@ for t in "${ALL_STUBS[@]}"; do
   esac
 
   if XSFX_SKIP_STUB_BUILD=1 RUSTFLAGS="$STUB_RUSTFLAGS" cargo +nightly build \
+       --no-default-features \
        -Z build-std=std,panic_abort \
        --release --bin stub --target "$t" 2>&1; then
 

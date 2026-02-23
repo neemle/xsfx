@@ -9,7 +9,7 @@ ARG EXTRA_CA_CERTS=""
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl ca-certificates pkg-config liblzma-dev && \
+        curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 RUN if [ -n "$EXTRA_CA_CERTS" ]; then printf '%s\n' "$EXTRA_CA_CERTS" >> /etc/ssl/certs/ca-certificates.crt; fi
@@ -64,7 +64,6 @@ RUN set -euo pipefail \
          ca-certificates curl git xz-utils cpio \
          build-essential pkg-config \
          clang lld make cmake gnupg \
-         liblzma-dev \
          gcc-aarch64-linux-gnu \
          libc6-dev-arm64-cross \
          crossbuild-essential-arm64 \

@@ -4,7 +4,7 @@
 
 - Docker (required for running tests)
 - Rust stable toolchain (1.76+, only for native builds without Docker)
-- `pkg-config` and `liblzma-dev` (Linux, for `native-compress` feature)
+- C compiler (for building vendored liblzma from source; included in Docker images)
 - `musl-tools` (Linux, for building the static stub)
 
 ## Repository Structure
@@ -59,11 +59,11 @@ export XSFX_STUB_PATH="$(pwd)/target/x86_64-unknown-linux-musl/release/stub"
 cargo build --release --bin xsfx
 ```
 
-### Build with native compression (better ratios)
+Ultra compression (liblzma) is enabled by default via vendored static linking —
+no system `liblzma-dev` needed. To build without it (pure-Rust fallback):
 
 ```bash
-export XSFX_STUB_PATH="$(pwd)/target/x86_64-unknown-linux-musl/release/stub"
-cargo build --release --bin xsfx --features native-compress
+cargo build --release --bin xsfx --no-default-features
 ```
 
 ## Platform-Specific Execution Strategies

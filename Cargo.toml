@@ -14,7 +14,9 @@ name = "stub"
 path = "src/bin/stub.rs"
 
 [features]
-# Use native liblzma via xz2 for better compression during packing.
+default = ["native-compress"]
+# Use native liblzma (statically linked from vendored source) for ultra
+# compression during packing. Enabled by default — no system liblzma-dev needed.
 native-compress = ["xz2"]
 
 [dependencies]
@@ -24,6 +26,7 @@ libc = "0.2"
 [dependencies.xz2]
 version = "0.1"
 optional = true
+features = ["static"]
 
 [profile.release]
 opt-level = "z"        # Optimize for size
