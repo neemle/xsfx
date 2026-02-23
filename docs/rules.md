@@ -1,6 +1,6 @@
 # docs/rules.md — Tight Rules (Spec + Speck Driven Development)
 
-**Version: 0.1.0**
+**Version: 0.2.0**
 
 These rules are **STRICT / NON‑NEGOTIABLE** for all AI agents and contributors in this repo.
 
@@ -11,7 +11,8 @@ If any instruction conflicts:
 3) `docs/rules.md`
 4) `docs/spec.md`
 5) `docs/specks/*.md`
-6) `README.md`
+6) `docs/backlog/*.md`
+7) `README.md`
 
 If truly ambiguous — ask before acting.
 
@@ -69,6 +70,7 @@ Mandatory documents:
 - `docs/development-manual.md`
 - `docs/installation-manual.md`
 - `docs/configuration-manual.md`
+- `docs/backlog/` (**task backlog; intake + estimation + decomposition — see §12**)
 
 If deprecated docs exist (`functional.md`, `task.md`, etc.):
 
@@ -128,6 +130,8 @@ Use cases MUST reference applicable BR/WF IDs.
 Every task/request MUST have a Speck file:
 
 - `docs/specks/SDD-###-short-title.md`
+
+**Prerequisite:** Before a Speck is created, the task MUST have passed through the Backlog Lifecycle (§12). Only tasks estimated as `LOW` (or decomposed down to `LOW`) proceed to Speck creation and implementation.
 
 ### 3.2 Speck audit is mandatory for EVERY task (no exceptions)
 
@@ -630,6 +634,8 @@ Repo SHOULD provide a single command (e.g., `make ci` or `./scripts/ci.sh`) runn
 - Introducing flaky tests
 - Direct DB mutation outside migrations/seeds used by the app
 - Network access outside test scope
+- Implementing a task without a corresponding `docs/backlog/TASK-###-*.md` file (see §12)
+- Implementing a `HIGH` or `IMPOSSIBLE TO ESTIMATE` task without decomposition (see §12.6)
 
 ---
 
@@ -644,6 +650,7 @@ Docs (all under `./docs`):
 - `docs/installation-manual.md`
 - `docs/configuration-manual.md`
 - `docs/specks/` (Specks per task)
+- `docs/backlog/` (task backlog files per §12 — all tasks `DONE`, `REJECTED`, or `DUPLICATE`)
 - `docs/ui-baselines/` (baseline screenshots per UC and per device project)
 
 Runtime/Infra:
@@ -668,6 +675,151 @@ Testing:
 - Every UC covered by at least one Playwright test with recorded video (Full HD, visible cursor, human-like speed)
 - Security/adversarial tests present at every applicable stage (labeled `[SEC]`)
 - Playwright configured for HTML report + screenshots + videos (Full HD, cursor visible)
+
+---
+
+## 12) Task Backlog & Estimation Lifecycle (Mandatory)
+
+### 12.1 Backlog location + naming (mandatory)
+
+Every incoming task MUST be recorded as a backlog item:
+
+- `docs/backlog/TASK-###-short-title.md`
+
+Numbering is sequential, zero-padded to 3 digits (e.g., `TASK-001`, `TASK-042`).
+
+The agent MUST create the backlog file **before** any analysis, estimation, or code change.
+
+### 12.2 Task intake (mandatory — first step for every request)
+
+When a user submits a task (feature request, bug fix, refactoring, infrastructure change, etc.), the agent MUST:
+
+1) **Record as-is:** Create `docs/backlog/TASK-###-short-title.md` capturing the user's request verbatim in the `## Raw Request` section. Do NOT paraphrase, interpret, or filter at this stage.
+2) **Set initial status:** `INTAKE`
+
+### 12.3 Task refinement (mandatory — no skipping)
+
+After intake, the agent MUST refine the task by cross-checking against the existing codebase and documentation:
+
+1) **Read `docs/spec.md`** and identify:
+    - which `UC-###` are impacted or need to be created
+    - which `BR-###` / `WF-###` are impacted or need to be created
+    - which API contracts (routes/methods/status codes/response shapes) are affected
+    - which UI states/flows/baselines are affected
+2) **Read existing `docs/backlog/`** to detect:
+    - duplicate tasks (same or overlapping scope)
+    - dependent tasks (must be done first or in parallel)
+    - conflicting tasks (contradictory goals)
+3) **Check feasibility** against current architecture:
+    - can the task be done within existing patterns/conventions?
+    - does it require new infrastructure (DB, queue, external service)?
+    - does it introduce breaking changes?
+4) **Write the refined description** in the `## Refined Description` section of the backlog file:
+    - clear scope and non-goals
+    - impacted UCs, BRs, WFs (with IDs)
+    - dependencies on other tasks (if any)
+    - known risks or open questions
+5) **Update status** to `REFINED`
+
+If refinement reveals the request is **ambiguous, contradictory, or incomplete** — the agent MUST ask the user for clarification BEFORE proceeding to estimation. Status stays `REFINED:BLOCKED` until resolved.
+
+### 12.4 Task estimation (mandatory)
+
+After refinement, the agent MUST estimate the task using these levels:
+
+| Level                    | Definition                                                                                                       |
+|--------------------------|------------------------------------------------------------------------------------------------------------------|
+| **VERY LOW**             | Trivial change; single file, no new tests beyond existing patterns, no spec changes. < 30 min equivalent effort. |
+| **LOW**                  | Small, well-scoped change; touches ≤ 3 files, clear acceptance criteria, predictable test surface. ≤ 2h effort.  |
+| **MEDIUM**               | Multi-file change; new UC or BR possible; requires new tests + Speck; moderate risk. ≤ 8h effort.               |
+| **HIGH**                 | Large scope; multiple UCs/BRs affected; new infrastructure or significant refactoring; hard to verify in one pass.|
+| **IMPOSSIBLE TO ESTIMATE** | Scope is unclear even after refinement; requires research spike, prototype, or user decision on ambiguities.     |
+
+Estimation MUST be based on:
+
+- number of impacted UCs / BRs / WFs
+- number of files / modules to change
+- new vs modified test surface
+- infrastructure changes required
+- risk of regressions
+
+The agent MUST record the estimation in the `## Estimation` section with:
+
+- the level
+- a brief justification (1–3 sentences)
+- status updated to `ESTIMATED`
+
+### 12.5 Implementation gate (hard)
+
+**Only tasks estimated as `VERY LOW`, `LOW`, or `MEDIUM` may proceed directly to implementation.**
+
+- `VERY LOW` / `LOW`: proceed to Speck creation (§3) and implementation immediately.
+- `MEDIUM`: proceed to Speck creation (§3) and implementation, but the agent MUST flag to the user that this is a medium-effort task and confirm before starting implementation.
+- `HIGH` / `IMPOSSIBLE TO ESTIMATE`: **MUST be decomposed** (see §12.6). Implementation is FORBIDDEN until all sub-tasks are estimated `LOW` or below.
+
+### 12.6 Task decomposition (mandatory for HIGH / IMPOSSIBLE TO ESTIMATE)
+
+Tasks that exceed the implementation gate MUST be recursively decomposed:
+
+1) **Identify natural boundaries** — split along:
+    - distinct UCs (one sub-task per UC)
+    - distinct layers (API vs UI vs infrastructure)
+    - distinct BRs/WFs (one sub-task per independent rule/workflow)
+    - sequential phases (schema migration → API endpoints → UI integration)
+2) **Create sub-task files:**
+    - `docs/backlog/TASK-###-A-short-title.md` (sub-tasks use parent number + letter suffix)
+    - deeply nested: `TASK-###-A1-short-title.md`, `TASK-###-A1a-short-title.md`, etc.
+3) **Each sub-task MUST go through the full lifecycle:**
+    - intake (inherited from parent — copy relevant portion of raw request)
+    - refinement (against spec, existing UCs, BRs, WFs)
+    - estimation
+    - decomposition (if still too large)
+4) **Decomposition stops when ALL leaf sub-tasks are estimated `LOW` or `VERY LOW`.**
+5) **Parent task** is updated:
+    - `## Sub-tasks` section lists all children with IDs and estimations
+    - status updated to `DECOMPOSED`
+    - parent is NOT implemented directly — only leaf sub-tasks are implemented
+6) **Execution order** of sub-tasks MUST be defined:
+    - dependencies between sub-tasks documented
+    - independent sub-tasks may run in parallel
+    - dependent sub-tasks MUST specify which task(s) they depend on
+
+### 12.7 Implementation execution (mandatory)
+
+Once a task (or leaf sub-task) passes the implementation gate:
+
+1) **Create the Speck** (`docs/specks/SDD-###-*.md`) per §3
+2) **Perform Speck audit** per §3.2
+3) **Implement** following all applicable rules (§5–§11)
+4) **Update backlog file status** to `IN PROGRESS` → `DONE`
+5) **When all leaf sub-tasks of a parent are `DONE`:**
+    - verify parent task's original acceptance criteria are met end-to-end
+    - update parent task status to `DONE`
+
+### 12.8 Task statuses (mandatory)
+
+Every backlog task MUST have exactly one of these statuses at all times:
+
+| Status              | Meaning                                                          |
+|---------------------|------------------------------------------------------------------|
+| `INTAKE`            | Raw request recorded, not yet refined                            |
+| `REFINED`           | Cross-checked against spec, scope clarified                      |
+| `REFINED:BLOCKED`   | Refinement found ambiguities; waiting for user clarification     |
+| `ESTIMATED`         | Size estimated, awaiting implementation gate decision            |
+| `DECOMPOSED`        | Too large; broken into sub-tasks (not directly implementable)    |
+| `READY`             | Passed implementation gate; ready for Speck creation + implementation |
+| `IN PROGRESS`       | Speck created; implementation underway                           |
+| `DONE`              | Implemented, all tests pass, all rules satisfied                 |
+| `REJECTED`          | User decided not to proceed (reason documented)                  |
+| `DUPLICATE`         | Duplicate of another task (reference documented)                 |
+
+### 12.9 Forbidden backlog actions (hard)
+
+- Starting implementation on a task that has not been refined and estimated
+- Implementing a `HIGH` or `IMPOSSIBLE TO ESTIMATE` task without decomposition
+- Skipping refinement (even for "obvious" tasks — refinement catches conflicts)
+- Deleting backlog files (mark as `REJECTED` or `DUPLICATE` instead)
+- Changing estimation level after implementation starts without user approval
 
 ---
 
@@ -743,3 +895,47 @@ Notes:
 - "✅" means meaningful assertions (status + body + outcome; UI interaction + baseline compare).
 - Every AC MUST have positive + negative test cases.
 - `SEC-*` rows document which security/adversarial vectors are tested at each stage (see §6.4).
+
+---
+
+## Appendix C — Minimal Backlog Task Template (for `docs/backlog/TASK-###-*.md`)
+
+# TASK-### — Title
+
+**Status:** `INTAKE` | `REFINED` | `REFINED:BLOCKED` | `ESTIMATED` | `DECOMPOSED` | `READY` | `IN PROGRESS` | `DONE` | `REJECTED` | `DUPLICATE`  
+**Created:** YYYY-MM-DD  
+**Updated:** YYYY-MM-DD
+
+## Raw Request
+
+> (Verbatim user request — do NOT edit after intake)
+
+## Refined Description
+
+**Scope:** ...  
+**Non-goals:** ...  
+**Impacted UCs:** UC-### (or "new UC required")  
+**Impacted BR/WF:** BR-### / WF-###  
+**Dependencies:** TASK-### (if any)  
+**Risks / Open Questions:** ...
+
+## Estimation
+
+**Level:** `VERY LOW` | `LOW` | `MEDIUM` | `HIGH` | `IMPOSSIBLE TO ESTIMATE`  
+**Justification:** ...
+
+## Sub-tasks (if DECOMPOSED)
+
+| Sub-task ID                    | Title       | Estimation | Status | Depends On |
+|--------------------------------|-------------|------------|--------|------------|
+| TASK-###-A-short-title         | ...         | LOW        | DONE   | —          |
+| TASK-###-B-short-title         | ...         | LOW        | READY  | TASK-###-A |
+
+## Execution Order
+
+1. TASK-###-A (no dependencies)
+2. TASK-###-B (depends on TASK-###-A)
+
+## Speck Reference
+
+`docs/specks/SDD-###-short-title.md` (created when status reaches `READY`)

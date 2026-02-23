@@ -20,11 +20,11 @@ default = ["native-compress"]
 native-compress = ["xz2"]
 
 [dependencies]
-lzma-rs = "0.3"
-libc = "0.2"
+lzma-rs = "0.3.0"
+libc = "0.2.180"
 
 [dependencies.xz2]
-version = "0.1"
+version = "0.1.7"
 optional = true
 features = ["static"]
 
