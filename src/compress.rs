@@ -64,7 +64,7 @@ fn compress_xz_to<R: io::BufRead, W: io::Write>(reader: &mut R, writer: &mut W) 
 mod tests {
     use super::*;
     use lzma_rs::xz_decompress;
-    use std::io::{BufReader, Cursor, Write};
+    use std::io::{BufReader, Cursor};
 
     #[cfg(not(feature = "native-compress"))]
     struct FailWriter;
@@ -174,6 +174,30 @@ mod tests {
     #[test]
     fn test_sec_compress_single_byte() {
         let data = [0xFFu8];
+        let compressed = compress_lzma(&data).unwrap();
+        let mut decompressed = Vec::new();
+        xz_decompress(
+            &mut BufReader::new(Cursor::new(compressed)),
+            &mut decompressed,
+        )
+        .unwrap();
+        assert_eq!(decompressed, data);
+    }
+
+    #[test]
+    fn test_sec_compress_repeated_no_leak() {
+        // Repeated compress cycles — must not accumulate resources or panic
+        let data = vec![0x42u8; 10_000];
+        for _ in 0..100 {
+            let compressed = compress_lzma(&data).unwrap();
+            assert!(!compressed.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_sec_compress_null_payload() {
+        // Payload entirely of null bytes
+        let data = vec![0u8; 50_000];
         let compressed = compress_lzma(&data).unwrap();
         let mut decompressed = Vec::new();
         xz_decompress(

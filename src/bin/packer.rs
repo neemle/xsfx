@@ -19,7 +19,10 @@ struct PackerArgs {
 fn parse_args() -> PackerArgs {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 || args.len() > 5 {
-        eprintln!("Usage: {} <input_payload> <output_sfx> [--target <triple>]", args[0]);
+        eprintln!(
+            "Usage: {} <input_payload> <output_sfx> [--target <triple>]",
+            args[0]
+        );
         list_available_stubs();
         std::process::exit(1);
     }
@@ -28,7 +31,10 @@ fn parse_args() -> PackerArgs {
         if args.len() == 5 && args[3] == "--target" {
             selected_target = Some(args[4].clone());
         } else {
-            eprintln!("Unknown arguments. Usage: {} <input_payload> <output_sfx> [--target <triple>]", args[0]);
+            eprintln!(
+                "Unknown arguments. Usage: {} <input_payload> <output_sfx> [--target <triple>]",
+                args[0]
+            );
             list_available_stubs();
             std::process::exit(1);
         }
@@ -63,19 +69,29 @@ fn main() -> io::Result<()> {
     let stub_bytes = match find_stub(&args.target) {
         Some(bytes) => bytes,
         None => {
-            eprintln!("Requested target '{}' not available in this build.", args.target);
+            eprintln!(
+                "Requested target '{}' not available in this build.",
+                args.target
+            );
             list_available_stubs();
             std::process::exit(2);
         }
     };
     let payload_bytes = fs::read(&args.payload_path).map_err(|e| {
-        eprintln!("Failed to read payload {}: {}", args.payload_path.display(), e);
+        eprintln!(
+            "Failed to read payload {}: {}",
+            args.payload_path.display(),
+            e
+        );
         e
     })?;
     let compressed_len = write_sfx(stub_bytes, &payload_bytes, &args.output_path)?;
     println!(
         "Created SFX: {} (target: {}, stub: {} bytes, payload: {} bytes compressed)",
-        args.output_path.display(), args.target, stub_bytes.len(), compressed_len
+        args.output_path.display(),
+        args.target,
+        stub_bytes.len(),
+        compressed_len
     );
     Ok(())
 }
