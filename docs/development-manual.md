@@ -1,194 +1,144 @@
-# Development Manual
+# xsfx — Development Manual
 
-## Prerequisites
+## 1. Prerequisites
 
-- Docker (required for running tests)
-- Rust stable toolchain (1.76+, only for native builds without Docker)
-- C compiler (for building vendored liblzma from source; included in Docker images)
-- `musl-tools` (Linux, for building the static stub)
+- **Docker** (for containerized testing and cross-compilation)
+- **Rust 1.76+** (for native development; nightly required for stub minification)
+- **C compiler** (gcc/clang for native builds with `native-compress` feature)
+- **musl-tools** (for Linux musl target builds)
 
-## Repository Structure
+## 2. Repository Structure
 
-```text
-src/
-  lib.rs            Re-exports: common, compress, decompress, pe_loader, macho_loader
-  common.rs         Trailer struct, MAGIC, TRAILER_SIZE
-  compress.rs       compress_lzma (XZ compression)
-  decompress.rs     decompress_payload (XZ decompression)
-  pe_loader.rs      Windows PE in-memory loading (compiled only on Windows)
-  macho_loader.rs   macOS Mach-O in-memory loading (compiled only on macOS)
-  bin/
-    packer.rs       CLI entry point for packing
-    stub.rs         SFX runtime (self-extract and execute)
-tests/
-  integration.rs    Integration tests (round-trip, format, security)
-docs/
-  spec.md           Business specification
-  rules.md          Development rules
-  specks/           Speck-driven development task files
+```
+xsfx/
+├── src/
+│   ├── lib.rs              # Library re-exports
+│   ├── common.rs           # Trailer struct, magic constants
+│   ├── compress.rs         # LZMA/XZ compression (packer)
+│   ├── decompress.rs       # LZMA/XZ decompression (stub)
+│   ├── pe_loader.rs        # Windows PE in-memory loader
+│   ├── macho_loader.rs     # macOS Mach-O in-memory loader
+│   └── bin/
+│       ├── packer.rs       # CLI packer entry point
+│       └── stub.rs         # SFX runtime (self-extract/execute)
+├── tests/
+│   └── integration.rs      # Integration tests
+├── docs/                   # Documentation (this folder)
+├── scripts/
+│   └── xsfx-entrypoint.sh  # Docker cross-build entrypoint
+├── .github/workflows/      # CI/CD
+│   ├── ci.yml              # Test + build pipeline
+│   └── release.yml         # Release pipeline
+├── Cargo.toml              # Rust package manifest
+├── Cargo.lock              # Pinned dependency versions
+├── Dockerfile              # Multi-stage: test + cross
+├── docker-compose.yml      # Docker Compose for testing
+├── build.rs                # Build script (stub catalog generation)
+├── build.sh                # Cross-compilation orchestration
+├── .env                    # Safe local defaults
+├── .dockerignore
+└── .gitignore
 ```
 
-## Building
+## 3. Running Tests
 
-### Build the stub (must be built first)
-
-#### Linux (static via musl -- recommended)
-
-```bash
-rustup target add x86_64-unknown-linux-musl
-cargo build --release --bin stub --target x86_64-unknown-linux-musl
-```
-
-#### Windows (static via crt-static)
-
-```bash
-set RUSTFLAGS=-C target-feature=+crt-static
-cargo build --release --bin stub --target x86_64-pc-windows-msvc
-```
-
-#### macOS
-
-```bash
-cargo build --release --bin stub --target aarch64-apple-darwin
-```
-
-### Build the packer (requires stub path)
-
-```bash
-export XSFX_STUB_PATH="$(pwd)/target/x86_64-unknown-linux-musl/release/stub"
-cargo build --release --bin xsfx
-```
-
-Ultra compression (liblzma) is enabled by default via vendored static linking —
-no system `liblzma-dev` needed. To build without it (pure-Rust fallback):
-
-```bash
-cargo build --release --bin xsfx --no-default-features
-```
-
-## Platform-Specific Execution Strategies
-
-The stub uses platform-specific in-memory execution on all platforms:
-
-| Platform | Strategy | Mechanism |
-|----------|----------|-----------|
-| Linux | memfd_create | Anonymous in-memory file via syscall, executed via execveat(AT_EMPTY_PATH) |
-| Windows | In-process PE loading | Parse PE headers, VirtualAlloc, map sections, resolve imports, call entry point |
-| macOS | NSObjectFileImage API | Patch MH_EXECUTE to MH_BUNDLE, load via NSCreateObjectFileImageFromMemory |
-
-No temp files are used on any platform.
-
-## Testing (Docker -- primary method)
-
-All tests run inside Docker containers. No local Rust toolchain required.
-
-### Run the full test suite (fmt + clippy + tests + coverage + audit)
+### Docker (recommended)
 
 ```bash
 docker compose run --build test
 ```
 
-This single command executes, in fail-fast order:
-
-1. `cargo fmt --all -- --check`
-2. `cargo clippy --lib --tests -- -D warnings`
-3. `cargo llvm-cov` with 100% line/function coverage enforcement
-4. `cargo audit`
-
-### Build the binary via Docker (includes static musl stub)
+Or via the unified CI script:
 
 ```bash
-docker build --target build -t xsfx-build .
+./scripts/ci.sh
 ```
 
-The Docker build compiles the stub with `x86_64-unknown-linux-musl` for a fully
-static binary, then embeds it into the packer.
+This runs the full fail-fast pipeline:
+1. `cargo fmt --all -- --check` — format check
+2. `cargo clippy --lib --test integration -- -D warnings` — linting
+3. `cargo llvm-cov` — coverage (100% lines, functions, regions)
+4. `cargo audit` — dependency vulnerability scan
 
-## Testing (native -- without Docker)
-
-Requires local Rust toolchain and `cargo-llvm-cov`, `cargo-audit`.
+### Native (fallback)
 
 ```bash
-cargo test --lib --tests
-cargo llvm-cov --lib --tests
-cargo fmt --all -- --check
-cargo clippy --lib --tests -- -D warnings
-cargo audit
+XSFX_SKIP_STUB_BUILD=1 cargo test --lib --test integration
 ```
 
-## Two-Stage SFX (musl minification PoC)
+`XSFX_SKIP_STUB_BUILD=1` skips stub compilation (requires nightly + cross toolchains).
 
-The `.dev-temp/xstrip-test/` directory contains a proof-of-concept for a
-two-stage SFX format that reduces musl SFX size by ~40%. See SDD-007 for
-full details.
+## 4. Building
 
-### Components
-
-| Component | Path | Description |
-|-----------|------|-------------|
-| stage0 | `.dev-temp/xstrip-test/stage0/` | nostd loader (~10 KB), custom inflate, raw syscalls |
-| assembler | `.dev-temp/xstrip-test/assembler/` | Test tool: assembles stage1 and two-stage SFX |
-| Dockerfile | `.dev-temp/xstrip-test/Dockerfile` | Builds everything, runs functional tests |
-
-### Running the PoC
-
-From the `neemle/` parent directory (Docker context):
+### Native Single-Target Build
 
 ```bash
-docker build \
-  --build-arg EXTRA_CA_CERTS="$(cat ~/zscaler.crt)" \
-  -f xsfx/.dev-temp/xstrip-test/Dockerfile \
-  --target test -t xstrip-stage0-test .
+cargo build --release --bin xsfx --features native-compress
 ```
 
-This builds stage0 (nostd), the real stub (nightly+build-std), xstrip,
-the assembler, and a hello-world payload. It then tests all four SFX
-variants (original, xstrip'd, two-stage original, two-stage xstrip'd)
-and prints a comparison report.
+This builds a packer that embeds only the host-platform stub.
 
-### Architecture
-
-```text
-Two-stage SFX layout:
-[stage0 ~10KB] [deflate(stage1_sfx)] [trailer 24B]
-                     |
-                     v
-              [stub ~96KB] [xz(payload)] [trailer 16B]
-```
-
-Stage0 reads itself, inflates stage1 into a memfd, execveat's it.
-Stage1 (the normal stub) opens itself via `/proc/self/exe` (works
-for memfds), decompresses the XZ payload, and execveat's the payload.
-
-## Cross-Compilation
-
-See `.github/workflows/ci.yml` for the full target matrix. Key targets:
-
-| Target                        | OS      | Stub Target                     | Notes              |
-|-------------------------------|---------|---------------------------------|--------------------|
-| `x86_64-unknown-linux-gnu`    | Linux   | `x86_64-unknown-linux-musl`     | native-compress    |
-| `aarch64-unknown-linux-gnu`   | Linux   | `aarch64-unknown-linux-musl`    | cross, native      |
-| `x86_64-unknown-linux-musl`   | Linux   | `x86_64-unknown-linux-musl`     | static, pure Rust  |
-| `aarch64-apple-darwin`        | macOS   | `aarch64-apple-darwin`          | native-compress    |
-| `x86_64-apple-darwin`         | macOS   | `x86_64-apple-darwin`           | native-compress    |
-| `x86_64-pc-windows-msvc`     | Windows | `x86_64-pc-windows-msvc`        | native-compress    |
-| `aarch64-pc-windows-msvc`    | Windows | `aarch64-pc-windows-msvc`       | native-compress    |
-
-Linux stubs always use musl for static linking. Windows stubs use `crt-static`.
-
-### Post-Build Stub Processing
-
-| Target | Tool | Effect |
-|--------|------|--------|
-| Non-musl | UPX `--best --lzma` | LZMA-compressed executable (~55% reduction) |
-| `*-linux-musl` | xstrip `-i` | ELF dead-code removal (minimal on LTO builds) |
-
-UPX is skipped for musl stubs (AT_BASE incompatibility). xstrip
-([ratushnyi-labs/xstrip](https://github.com/ratushnyi-labs/xstrip)) is
-applied instead for ELF-level analysis and dead code removal.
-
-Cross-compilation requires the appropriate linker and target installed:
+### Cross-Compilation (All 9 Targets)
 
 ```bash
-rustup target add <target>
+./build.sh
 ```
+
+To build a subset:
+
+```bash
+PACKER_TARGETS="x86_64-unknown-linux-gnu" ./build.sh
+```
+
+The build script:
+1. Builds/caches the `xsfx-build` Docker image (cross-compilation stage)
+2. Creates a `xsfx_cargo_cache` Docker volume for dependency caching
+3. Runs `scripts/xsfx-entrypoint.sh` inside the container
+4. Outputs packaged binaries to `./dist/`
+
+### Build Pipeline (inside Docker)
+
+**Phase 1 — Build optimized stubs:**
+- Uses nightly Rust with `-Z build-std=std,panic_abort`
+- Applies `-Cpanic=immediate-abort` for minimal std footprint
+- Post-processing:
+  - Non-musl targets: UPX `--best --lzma` compression
+  - Musl targets: `xstrip` ELF dead-code removal (UPX incompatible due to AT_BASE)
+
+**Phase 2 — Build packers with prebuilt stubs:**
+- Uses stable Rust with `native-compress` feature
+- Sets `XSFX_PREBUILT_STUBS_DIR` to embed pre-optimized stubs
+- Builds one packer per target platform
+
+## 5. Platform-Specific Execution Strategies
+
+| Platform | Method | Details |
+|----------|--------|---------|
+| Linux | `memfd_create` + `execveat` | Anonymous in-memory fd, process replacement via `AT_EMPTY_PATH` |
+| Windows | In-process PE loader | Parse PE32+, VirtualAlloc, map sections, fix relocations, resolve imports |
+| macOS | `NSCreateObjectFileImageFromMemory` | Patch MH_EXECUTE→MH_BUNDLE, link module, call `_main` |
+
+## 6. Test Structure
+
+Tests are organized as:
+- **Unit tests:** embedded in each source module (`common.rs`, `compress.rs`, `decompress.rs`, `pe_loader.rs`, `macho_loader.rs`)
+- **Integration tests:** `tests/integration.rs` (SFX format assembly, roundtrip, edge cases)
+- **Security tests:** labeled `test_sec_ucXXX_*` covering adversarial inputs, memory leaks, corruption, boundary values
+
+Coverage is enforced at 100% for lines, functions, and regions (excluding `bin/` targets).
+
+## 7. Two-Stage SFX (Proof of Concept)
+
+Located in `.dev-temp/xstrip-test/`. A two-stage format for musl targets:
+- **stage0:** ~10 KB nostd loader with custom RFC 1951 inflate and raw x86_64 syscalls
+- **stage1:** standard SFX (stub + xz(payload) + trailer)
+- Achieves ~40% size reduction by deflate-compressing the 96 KB musl stub through a 10 KB loader
+
+## 8. Adding a New Target
+
+1. Add the target triple to `build.rs` `ALL_TARGETS` array
+2. Configure cross-linker in `Dockerfile` (cross stage) and cargo config
+3. Add platform-specific execution in `src/bin/stub.rs` (behind `#[cfg(target_os)]`)
+4. Update `scripts/xsfx-entrypoint.sh` with stub-specific flags and post-processing
+5. Update CI workflows if needed
+6. Add tests for the new execution path

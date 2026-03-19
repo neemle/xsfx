@@ -164,8 +164,8 @@ fn parse_section_headers(
     Ok(sections)
 }
 
-/// Parse PE headers from raw bytes. Cross-platform (pure byte parsing).
-pub fn parse_pe(data: &[u8]) -> io::Result<PeHeaders> {
+/// Validate DOS/PE/COFF headers and return (coff_offset, num_sections, opt_hdr_size).
+fn validate_coff_headers(data: &[u8]) -> io::Result<(usize, usize, usize)> {
     if data.len() < 64 {
         return Err(pe_err("PE too small for DOS header"));
     }
@@ -185,7 +185,11 @@ pub fn parse_pe(data: &[u8]) -> io::Result<PeHeaders> {
     if opt_hdr_size < 112 {
         return Err(pe_err("PE optional header too small"));
     }
-    let opt = coff + 20;
+    Ok((coff, num_sections, opt_hdr_size))
+}
+
+/// Parse the PE32+ optional header fields needed for loading.
+fn parse_optional_header(data: &[u8], opt: usize) -> io::Result<(u32, u64, u32, u32, usize)> {
     if read_u16(data, opt)? != OPTIONAL_MAGIC_PE32_PLUS {
         return Err(pe_err("Not a PE32+ (64-bit) image"));
     }
@@ -194,6 +198,15 @@ pub fn parse_pe(data: &[u8]) -> io::Result<PeHeaders> {
     let section_alignment = read_u32(data, opt + 32)?;
     let size_of_image = read_u32(data, opt + 56)?;
     let num_dirs = read_u32(data, opt + 108)? as usize;
+    Ok((entry_point_rva, image_base, section_alignment, size_of_image, num_dirs))
+}
+
+/// Parse PE headers from raw bytes. Cross-platform (pure byte parsing).
+pub fn parse_pe(data: &[u8]) -> io::Result<PeHeaders> {
+    let (coff, num_sections, opt_hdr_size) = validate_coff_headers(data)?;
+    let opt = coff + 20;
+    let (entry_point_rva, image_base, section_alignment, size_of_image, num_dirs) =
+        parse_optional_header(data, opt)?;
     let (import_dir_rva, import_dir_size, reloc_dir_rva, reloc_dir_size) =
         read_data_dirs(data, opt + 112, num_dirs)?;
     let sections = parse_section_headers(data, opt + opt_hdr_size, num_sections, size_of_image)?;
@@ -545,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_too_small() {
+    fn test_sec_uc002_parse_pe_too_small() {
         let data = vec![0u8; 10];
         let result = parse_pe(&data);
         assert!(result.is_err());
@@ -554,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_bad_dos_magic() {
+    fn test_sec_uc002_parse_pe_bad_dos_magic() {
         let mut pe = build_minimal_pe();
         pe[0] = 0x00; // corrupt MZ
         let result = parse_pe(&pe);
@@ -564,7 +577,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_bad_pe_signature() {
+    fn test_sec_uc002_parse_pe_bad_pe_signature() {
         let mut pe = build_minimal_pe();
         let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
         pe[pe_off] = 0x00; // corrupt PE signature
@@ -575,7 +588,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_wrong_machine() {
+    fn test_sec_uc002_parse_pe_wrong_machine() {
         let mut pe = build_minimal_pe();
         let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
         let coff = pe_off + 4;
@@ -587,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_bad_optional_magic() {
+    fn test_sec_uc002_parse_pe_bad_optional_magic() {
         let mut pe = build_minimal_pe();
         let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
         let opt = pe_off + 4 + 20;
@@ -599,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_section_exceeds_image() {
+    fn test_sec_uc002_parse_pe_section_exceeds_image() {
         let mut pe = build_minimal_pe();
         let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
         let opt = pe_off + 4 + 20;
@@ -613,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_too_many_sections() {
+    fn test_sec_uc002_parse_pe_too_many_sections() {
         let mut pe = build_minimal_pe();
         let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
         let coff = pe_off + 4;
@@ -626,7 +639,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_optional_header_too_small() {
+    fn test_sec_uc002_parse_pe_optional_header_too_small() {
         let mut pe = build_minimal_pe();
         let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
         let coff = pe_off + 4;
@@ -639,13 +652,13 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_empty_input() {
+    fn test_sec_uc002_parse_pe_empty_input() {
         let result = parse_pe(&[]);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_sec_parse_pe_truncated_at_pe_offset() {
+    fn test_sec_uc002_parse_pe_truncated_at_pe_offset() {
         // Valid DOS header but data ends before PE signature
         let mut pe = vec![0u8; 64];
         pe[0] = 0x4D;
@@ -735,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_zero_sections() {
+    fn test_sec_uc002_parse_pe_zero_sections() {
         let mut pe = build_minimal_pe();
         let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
         let coff = pe_off + 4;
@@ -746,7 +759,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_section_raw_data_beyond_file() {
+    fn test_sec_uc002_parse_pe_section_raw_data_beyond_file() {
         let mut pe = build_minimal_pe();
         let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
         let opt = pe_off + 4 + 20;
@@ -759,7 +772,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_data_dir_beyond_file() {
+    fn test_sec_uc002_parse_pe_data_dir_beyond_file() {
         let mut pe = build_minimal_pe();
         let pe_off = u32::from_le_bytes([pe[60], pe[61], pe[62], pe[63]]) as usize;
         let opt = pe_off + 4 + 20;
@@ -773,7 +786,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_overlapping_sections() {
+    fn test_sec_uc002_parse_pe_overlapping_sections() {
         let mut pe = vec![0u8; 1024];
         pe[0] = 0x4D;
         pe[1] = 0x5A;
@@ -809,7 +822,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_parse_pe_repeated_no_leak() {
+    fn test_sec_uc002_parse_pe_repeated_no_leak() {
         let pe = build_minimal_pe();
         for _ in 0..500 {
             let headers = parse_pe(&pe).unwrap();

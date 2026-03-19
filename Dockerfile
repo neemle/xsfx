@@ -28,10 +28,20 @@ RUN cargo install cargo-audit --locked
 
 ENV XSFX_SKIP_STUB_BUILD=1
 
-COPY Cargo.toml Cargo.lock ./
-COPY build.rs ./
-COPY src/ src/
-COPY tests/ tests/
+RUN useradd -r -u 1001 -m appuser && \
+    chown -R appuser:appuser /app
+
+COPY --chown=appuser:appuser Cargo.toml Cargo.lock ./
+COPY --chown=appuser:appuser build.rs ./
+COPY --chown=appuser:appuser src/ src/
+COPY --chown=appuser:appuser tests/ tests/
+
+USER appuser
+ENV CARGO_HOME=/home/appuser/.cargo
+ENV PATH=/home/appuser/.cargo/bin:/usr/local/cargo/bin:$PATH
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=1 \
+    CMD ["rustc", "--version"]
 
 CMD cargo fmt --all -- --check \
     && cargo clippy --lib --test integration -- -D warnings \

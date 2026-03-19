@@ -1,7 +1,6 @@
 use std::env;
 use std::fs::{self, File};
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, Read, Write};
 
 use xsfx::common::Trailer;
 use xsfx::compress::compress_lzma;
@@ -11,18 +10,20 @@ mod stub_catalog {
 }
 
 struct PackerArgs {
-    payload_path: PathBuf,
-    output_path: PathBuf,
+    payload_path: String,
+    output_path: String,
     target: String,
+}
+
+fn print_usage(prog: &str) {
+    eprintln!("Usage: {} <input> <output> [--target <triple>]", prog);
+    eprintln!("  Use '-' for input to read from stdin, '-' for output to write to stdout.");
 }
 
 fn parse_args() -> PackerArgs {
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 || args.len() > 5 {
-        eprintln!(
-            "Usage: {} <input_payload> <output_sfx> [--target <triple>]",
-            args[0]
-        );
+        print_usage(&args[0]);
         list_available_stubs();
         std::process::exit(1);
     }
@@ -31,10 +32,7 @@ fn parse_args() -> PackerArgs {
         if args.len() == 5 && args[3] == "--target" {
             selected_target = Some(args[4].clone());
         } else {
-            eprintln!(
-                "Unknown arguments. Usage: {} <input_payload> <output_sfx> [--target <triple>]",
-                args[0]
-            );
+            print_usage(&args[0]);
             list_available_stubs();
             std::process::exit(1);
         }
@@ -43,24 +41,45 @@ fn parse_args() -> PackerArgs {
         .or_else(|| env::var("XSFX_OUT_TARGET").ok())
         .unwrap_or_else(|| stub_catalog::DEFAULT_TARGET.to_string());
     PackerArgs {
-        payload_path: PathBuf::from(&args[1]),
-        output_path: PathBuf::from(&args[2]),
+        payload_path: args[1].clone(),
+        output_path: args[2].clone(),
         target,
     }
 }
 
-fn write_sfx(stub: &[u8], payload: &[u8], output: &Path) -> io::Result<u64> {
+fn read_payload(path: &str) -> io::Result<Vec<u8>> {
+    if path == "-" {
+        let mut buf = Vec::new();
+        io::stdin().lock().read_to_end(&mut buf)?;
+        Ok(buf)
+    } else {
+        fs::read(path).map_err(|e| {
+            eprintln!("Failed to read payload {}: {}", path, e);
+            e
+        })
+    }
+}
+
+fn open_output(path: &str) -> io::Result<Box<dyn Write>> {
+    if path == "-" {
+        Ok(Box::new(io::stdout().lock()))
+    } else {
+        let f = File::create(path).map_err(|e| {
+            eprintln!("Failed to create output {}: {}", path, e);
+            e
+        })?;
+        Ok(Box::new(f))
+    }
+}
+
+fn write_sfx(stub: &[u8], payload: &[u8], writer: &mut dyn Write) -> io::Result<u64> {
     let compressed = compress_lzma(payload)?;
     let compressed_len = compressed.len() as u64;
     let trailer = Trailer::new(compressed_len);
-    let mut out = File::create(output).map_err(|e| {
-        eprintln!("Failed to create output {}: {}", output.display(), e);
-        e
-    })?;
-    out.write_all(stub)?;
-    out.write_all(&compressed)?;
-    out.write_all(&trailer.to_bytes())?;
-    out.flush()?;
+    writer.write_all(stub)?;
+    writer.write_all(&compressed)?;
+    writer.write_all(&trailer.to_bytes())?;
+    writer.flush()?;
     Ok(compressed_len)
 }
 
@@ -77,22 +96,15 @@ fn main() -> io::Result<()> {
             std::process::exit(2);
         }
     };
-    let payload_bytes = fs::read(&args.payload_path).map_err(|e| {
+    let payload_bytes = read_payload(&args.payload_path)?;
+    let mut out = open_output(&args.output_path)?;
+    let compressed_len = write_sfx(stub_bytes, &payload_bytes, &mut *out)?;
+    if args.output_path != "-" {
         eprintln!(
-            "Failed to read payload {}: {}",
-            args.payload_path.display(),
-            e
+            "Created SFX: {} (target: {}, stub: {} bytes, payload: {} bytes compressed)",
+            args.output_path, args.target, stub_bytes.len(), compressed_len
         );
-        e
-    })?;
-    let compressed_len = write_sfx(stub_bytes, &payload_bytes, &args.output_path)?;
-    println!(
-        "Created SFX: {} (target: {}, stub: {} bytes, payload: {} bytes compressed)",
-        args.output_path.display(),
-        args.target,
-        stub_bytes.len(),
-        compressed_len
-    );
+    }
     Ok(())
 }
 

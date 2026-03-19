@@ -111,19 +111,19 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_trailer_from_reader_truncated() {
+    fn test_sec_uc001_uc002_trailer_from_reader_truncated() {
         let result = Trailer::from_reader(Cursor::new([0u8; 8]));
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_sec_trailer_from_reader_empty() {
+    fn test_sec_uc001_uc002_trailer_from_reader_empty() {
         let result = Trailer::from_reader(Cursor::new([]));
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_sec_trailer_invalid_magic_parsed() {
+    fn test_sec_uc002_trailer_invalid_magic_parsed() {
         let mut bytes = Trailer::new(100).to_bytes();
         bytes[8] = 0xFF;
         let t = Trailer::from_reader(Cursor::new(bytes)).unwrap();
@@ -131,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_trailer_all_zeros() {
+    fn test_sec_uc002_trailer_all_zeros() {
         let bytes = [0u8; 16];
         let t = Trailer::from_reader(Cursor::new(bytes)).unwrap();
         assert_eq!(t.payload_len, 0);
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_trailer_all_ones() {
+    fn test_sec_uc002_trailer_all_ones() {
         let bytes = [0xFFu8; 16];
         let t = Trailer::from_reader(Cursor::new(bytes)).unwrap();
         assert_eq!(t.payload_len, u64::MAX);
@@ -147,7 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_trailer_repeated_no_leak() {
+    fn test_sec_uc001_uc002_trailer_repeated_no_leak() {
         // Repeated trailer create/parse cycles — no resource accumulation
         for i in 0..1000u64 {
             let t = Trailer::new(i);

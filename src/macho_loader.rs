@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_validate_macho_too_small() {
+    fn test_sec_uc002_validate_macho_too_small() {
         let data = vec![0u8; 8];
         let result = validate_macho(&data);
         assert!(result.is_err());
@@ -187,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_validate_macho_bad_magic() {
+    fn test_sec_uc002_validate_macho_bad_magic() {
         let mut data = vec![0u8; 32];
         data[0..4].copy_from_slice(&0xDEAD_BEEFu32.to_le_bytes());
         let result = validate_macho(&data);
@@ -197,13 +197,13 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_validate_macho_empty() {
+    fn test_sec_uc002_validate_macho_empty() {
         let result = validate_macho(&[]);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_sec_patch_not_execute() {
+    fn test_sec_uc002_patch_not_execute() {
         let mut data = vec![0u8; 32];
         data[0..4].copy_from_slice(&MH_MAGIC_64.to_le_bytes());
         data[12..16].copy_from_slice(&MH_BUNDLE.to_le_bytes());
@@ -214,14 +214,14 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_patch_bad_magic() {
+    fn test_sec_uc002_patch_bad_magic() {
         let data = vec![0xFFu8; 32];
         let result = patch_filetype_to_bundle(&data);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_sec_patch_truncated() {
+    fn test_sec_uc002_patch_truncated() {
         let result = patch_filetype_to_bundle(&[0xCF, 0xFA, 0xED, 0xFE]);
         assert!(result.is_err());
     }

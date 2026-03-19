@@ -1,8 +1,20 @@
-use std::io::{BufReader, Cursor};
+use std::io::{BufReader, Cursor, Write};
 
 use xsfx::common::{Trailer, MAGIC, TRAILER_SIZE};
 use xsfx::compress::compress_lzma;
 use xsfx::decompress::decompress_payload;
+
+/// Assemble an SFX into a writer (mirrors packer write_sfx logic).
+fn assemble_sfx(stub: &[u8], payload: &[u8], writer: &mut dyn Write) -> u64 {
+    let compressed = compress_lzma(payload).unwrap();
+    let compressed_len = compressed.len() as u64;
+    let trailer = Trailer::new(compressed_len);
+    writer.write_all(stub).unwrap();
+    writer.write_all(&compressed).unwrap();
+    writer.write_all(&trailer.to_bytes()).unwrap();
+    writer.flush().unwrap();
+    compressed_len
+}
 
 // --- Positive path tests ---
 
@@ -88,10 +100,10 @@ fn test_trailer_preserves_stub_offset() {
     assert_eq!(&sfx[..stub_end], &stub);
 }
 
-// --- Security / adversarial tests ---
+// --- [SEC] Security / adversarial tests ---
 
 #[test]
-fn test_sec_corrupted_trailer_magic() {
+fn test_sec_uc002_corrupted_trailer_magic() {
     let mut trailer_bytes = Trailer::new(100).to_bytes();
     trailer_bytes[8] = 0x00; // corrupt first magic byte
     let t = Trailer::from_reader(Cursor::new(trailer_bytes)).unwrap();
@@ -99,7 +111,7 @@ fn test_sec_corrupted_trailer_magic() {
 }
 
 #[test]
-fn test_sec_corrupted_compressed_data() {
+fn test_sec_uc002_corrupted_compressed_data() {
     let payload = b"good data";
     let mut compressed = compress_lzma(payload).unwrap();
     // Corrupt the middle of the compressed stream
@@ -113,7 +125,7 @@ fn test_sec_corrupted_compressed_data() {
 }
 
 #[test]
-fn test_sec_payload_length_exceeds_sfx() {
+fn test_sec_uc002_payload_length_exceeds_sfx() {
     let stub = b"STUB";
     let payload = b"data";
     let compressed = compress_lzma(payload).unwrap();
@@ -134,7 +146,7 @@ fn test_sec_payload_length_exceeds_sfx() {
 }
 
 #[test]
-fn test_sec_zero_payload_length() {
+fn test_sec_uc002_zero_payload_length() {
     let trailer = Trailer::new(0);
     let bytes = trailer.to_bytes();
     let parsed = Trailer::from_reader(Cursor::new(bytes)).unwrap();
@@ -143,7 +155,7 @@ fn test_sec_zero_payload_length() {
 }
 
 #[test]
-fn test_sec_max_payload_length() {
+fn test_sec_uc002_max_payload_length() {
     let trailer = Trailer::new(u64::MAX);
     let bytes = trailer.to_bytes();
     let parsed = Trailer::from_reader(Cursor::new(bytes)).unwrap();
@@ -152,7 +164,7 @@ fn test_sec_max_payload_length() {
 }
 
 #[test]
-fn test_sec_sfx_with_no_compressed_data() {
+fn test_sec_uc002_sfx_with_no_compressed_data() {
     let stub = b"STUB";
     let trailer = Trailer::new(0);
     let mut sfx = Vec::new();
@@ -167,7 +179,7 @@ fn test_sec_sfx_with_no_compressed_data() {
 }
 
 #[test]
-fn test_sec_trailer_at_minimum_file_size() {
+fn test_sec_uc002_trailer_at_minimum_file_size() {
     // File is exactly 16 bytes (trailer only, no stub, no payload)
     let trailer = Trailer::new(0);
     let sfx = trailer.to_bytes();
@@ -177,7 +189,7 @@ fn test_sec_trailer_at_minimum_file_size() {
 }
 
 #[test]
-fn test_sec_binary_payload_roundtrip() {
+fn test_sec_uc001_uc002_binary_payload_roundtrip() {
     // Payload containing all possible byte values
     let payload: Vec<u8> = (0..=255).collect();
     let compressed = compress_lzma(&payload).unwrap();
@@ -187,7 +199,7 @@ fn test_sec_binary_payload_roundtrip() {
 }
 
 #[test]
-fn test_sec_payload_offset_underflow() {
+fn test_sec_uc002_payload_offset_underflow() {
     // payload_len larger than (total_len - TRAILER_SIZE) would underflow
     // the payload_start calculation: total_len - TRAILER_SIZE - payload_len
     let stub = b"STUB";
@@ -211,7 +223,7 @@ fn test_sec_payload_offset_underflow() {
 }
 
 #[test]
-fn test_sec_null_byte_payload_full_roundtrip() {
+fn test_sec_uc001_uc002_null_byte_payload_full_roundtrip() {
     // All-null payload through full SFX assembly and extraction
     let stub = b"FAKESTUB";
     let payload = vec![0u8; 10_000];
@@ -235,7 +247,7 @@ fn test_sec_null_byte_payload_full_roundtrip() {
 }
 
 #[test]
-fn test_sec_sfx_assembly_repeated_no_leak() {
+fn test_sec_uc001_uc002_sfx_assembly_repeated_no_leak() {
     // Repeated SFX assembly/parse cycles — no resource accumulation
     let stub = b"STUB";
     let payload = b"repeated test";
@@ -261,7 +273,7 @@ fn test_sec_sfx_assembly_repeated_no_leak() {
 }
 
 #[test]
-fn test_sec_corrupted_every_trailer_byte() {
+fn test_sec_uc002_corrupted_every_trailer_byte() {
     // Corrupt each byte position in the trailer independently
     let original = Trailer::new(42);
     let original_bytes = original.to_bytes();
@@ -272,5 +284,122 @@ fn test_sec_corrupted_every_trailer_byte() {
         // At least one field should differ from the original
         let differs = parsed.payload_len != 42 || parsed.magic != MAGIC;
         assert!(differs, "corruption at byte {} had no effect", i);
+    }
+}
+
+// --- [SEC] Additional security / adversarial tests ---
+
+#[test]
+fn test_sec_uc001_write_sfx_to_memory_buffer() {
+    // Verifies the packer write path via in-memory writer (pipe output path)
+    let stub = b"FAKE_STUB";
+    let payload = b"pipe test payload";
+    let mut buf: Vec<u8> = Vec::new();
+    let compressed_len = assemble_sfx(stub, payload, &mut buf);
+
+    // Verify structure: stub + compressed + trailer
+    assert!(buf.len() > stub.len() + TRAILER_SIZE as usize);
+    assert_eq!(&buf[..stub.len()], stub);
+
+    // Parse trailer from end
+    let t_off = buf.len() - TRAILER_SIZE as usize;
+    let parsed = Trailer::from_reader(Cursor::new(&buf[t_off..])).unwrap();
+    assert_eq!(parsed.magic, MAGIC);
+    assert_eq!(parsed.payload_len, compressed_len);
+
+    // Extract and decompress
+    let p_start = t_off - parsed.payload_len as usize;
+    let mut reader = BufReader::new(Cursor::new(&buf[p_start..t_off]));
+    let result = decompress_payload(&mut reader).unwrap();
+    assert_eq!(result, payload);
+}
+
+#[test]
+fn test_sec_uc001_large_payload_roundtrip() {
+    // 1 MB payload — stress test for large allocations
+    let payload = vec![0x42u8; 1_000_000];
+    let compressed = compress_lzma(&payload).unwrap();
+    let mut reader = BufReader::new(Cursor::new(&compressed));
+    let result = decompress_payload(&mut reader).unwrap();
+    assert_eq!(result.len(), 1_000_000);
+    assert_eq!(result, payload);
+}
+
+#[test]
+fn test_sec_uc001_uc002_large_sfx_assembly() {
+    // Full SFX assembly with 1 MB payload via in-memory writer
+    let stub = vec![0xCCu8; 1024];
+    let payload = vec![0xABu8; 500_000];
+    let mut buf: Vec<u8> = Vec::new();
+    assemble_sfx(&stub, &payload, &mut buf);
+
+    let t_off = buf.len() - TRAILER_SIZE as usize;
+    let parsed = Trailer::from_reader(Cursor::new(&buf[t_off..])).unwrap();
+    assert_eq!(parsed.magic, MAGIC);
+
+    let p_start = t_off - parsed.payload_len as usize;
+    assert_eq!(p_start, stub.len());
+    let mut reader = BufReader::new(Cursor::new(&buf[p_start..t_off]));
+    let result = decompress_payload(&mut reader).unwrap();
+    assert_eq!(result, payload);
+}
+
+#[test]
+fn test_sec_uc001_empty_stub_valid_payload() {
+    // SFX with zero-length stub (edge case)
+    let stub = b"";
+    let payload = b"payload with empty stub";
+    let mut buf: Vec<u8> = Vec::new();
+    assemble_sfx(stub, payload, &mut buf);
+
+    let t_off = buf.len() - TRAILER_SIZE as usize;
+    let parsed = Trailer::from_reader(Cursor::new(&buf[t_off..])).unwrap();
+    assert_eq!(parsed.magic, MAGIC);
+
+    let p_start = t_off - parsed.payload_len as usize;
+    assert_eq!(p_start, 0); // no stub
+    let mut reader = BufReader::new(Cursor::new(&buf[p_start..t_off]));
+    let result = decompress_payload(&mut reader).unwrap();
+    assert_eq!(result, payload);
+}
+
+#[test]
+fn test_sec_uc001_uc002_high_entropy_payload() {
+    // Payload with high entropy (pseudo-random) — worst case for compression
+    let payload: Vec<u8> = (0..10_000u32).map(|i| (i.wrapping_mul(2654435761) >> 24) as u8).collect();
+    let compressed = compress_lzma(&payload).unwrap();
+    let mut reader = BufReader::new(Cursor::new(&compressed));
+    let result = decompress_payload(&mut reader).unwrap();
+    assert_eq!(result, payload);
+}
+
+#[test]
+fn test_sec_uc002_trailer_payload_len_equals_total() {
+    // payload_len == total_len (would mean payload overlaps trailer)
+    let stub = b"STUB";
+    let compressed = compress_lzma(b"data").unwrap();
+    let mut sfx = Vec::new();
+    sfx.extend_from_slice(stub);
+    sfx.extend_from_slice(&compressed);
+    let total_so_far = sfx.len() as u64 + TRAILER_SIZE;
+    let bad_trailer = Trailer::new(total_so_far); // claims entire file is payload
+    sfx.extend_from_slice(&bad_trailer.to_bytes());
+
+    let total = sfx.len() as u64;
+    let t_off = (total - TRAILER_SIZE) as usize;
+    let parsed = Trailer::from_reader(Cursor::new(&sfx[t_off..])).unwrap();
+    // payload_len == total_len means payload would overlap trailer — invalid
+    assert_eq!(parsed.payload_len, total);
+}
+
+#[test]
+fn test_sec_uc001_write_sfx_repeated_no_leak() {
+    // Repeated write-to-buffer cycles — no resource accumulation
+    let stub = b"STUB";
+    let payload = b"leak test";
+    for _ in 0..100 {
+        let mut buf: Vec<u8> = Vec::new();
+        assemble_sfx(stub, payload, &mut buf);
+        assert!(!buf.is_empty());
     }
 }

@@ -35,7 +35,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_decompress_invalid_data() {
+    fn test_sec_uc002_decompress_invalid_data() {
         let bad_data = vec![0xFF; 100];
         let mut reader = BufReader::new(Cursor::new(bad_data));
         let result = decompress_payload(&mut reader);
@@ -43,14 +43,14 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_decompress_empty_input() {
+    fn test_sec_uc002_decompress_empty_input() {
         let mut reader = BufReader::new(Cursor::new(Vec::<u8>::new()));
         let result = decompress_payload(&mut reader);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_sec_decompress_truncated_xz() {
+    fn test_sec_uc002_decompress_truncated_xz() {
         let original = b"data to truncate";
         let compressed = compress_lzma(original).unwrap();
         let truncated = &compressed[..compressed.len() / 2];
@@ -60,7 +60,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_decompress_partial_xz_header() {
+    fn test_sec_uc002_decompress_partial_xz_header() {
         // Only the XZ magic bytes, nothing else
         let partial = vec![0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00];
         let mut reader = BufReader::new(Cursor::new(partial));
@@ -69,7 +69,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_decompress_random_bytes() {
+    fn test_sec_uc002_decompress_random_bytes() {
         let random: Vec<u8> = (0..256).map(|i| (i * 37 + 13) as u8).collect();
         let mut reader = BufReader::new(Cursor::new(random));
         let result = decompress_payload(&mut reader);
@@ -77,7 +77,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_decompress_high_ratio() {
+    fn test_sec_uc002_decompress_high_ratio() {
         // Compress 1 MB of zeros — high compression ratio stress test
         let original = vec![0u8; 1_000_000];
         let compressed = compress_lzma(&original).unwrap();
@@ -89,7 +89,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_decompress_null_bytes_payload() {
+    fn test_sec_uc002_decompress_null_bytes_payload() {
         // Payload entirely of null bytes through compress/decompress roundtrip
         let original = vec![0u8; 10_000];
         let compressed = compress_lzma(&original).unwrap();
@@ -99,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sec_decompress_repeated_no_leak() {
+    fn test_sec_uc002_decompress_repeated_no_leak() {
         // Repeated decompress cycles — must not accumulate resources or panic
         let original = vec![0xABu8; 5_000];
         let compressed = compress_lzma(&original).unwrap();

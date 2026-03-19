@@ -1,88 +1,143 @@
-# Installation Manual
+# xsfx — Installation Manual
 
-## Download Pre-built Binaries
+## 1. Download Pre-built Binaries
 
-Download the latest release for your platform from the
-[GitHub Releases](../../releases) page.
+Pre-built binaries are available from [GitHub Releases](https://github.com/neemle/xsfx/releases).
 
-Available archives:
+Available platforms:
 
-| Platform              | Archive                          |
-|-----------------------|----------------------------------|
-| Linux x64 (glibc)    | `xsfx-linux-x64-gnu.tar.gz`     |
-| Linux ARM64 (glibc)  | `xsfx-linux-arm64-gnu.tar.gz`   |
-| Linux x64 (musl)     | `xsfx-linux-x64-musl.tar.gz`    |
-| macOS ARM64           | `xsfx-macos-arm64.tar.gz`       |
-| macOS x64             | `xsfx-macos-x64.tar.gz`         |
-| Windows x64           | `xsfx-windows-x64.zip`          |
-| Windows ARM64         | `xsfx-windows-arm64.zip`        |
+| Platform | File |
+|----------|------|
+| Linux x64 (glibc) | `xsfx-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux ARM64 (glibc) | `xsfx-aarch64-unknown-linux-gnu.tar.gz` |
+| Linux x64 (musl, static) | `xsfx-x86_64-unknown-linux-musl.tar.gz` |
+| Linux ARM64 (musl, static) | `xsfx-aarch64-unknown-linux-musl.tar.gz` |
+| macOS x64 | `xsfx-x86_64-apple-darwin.tar.gz` |
+| macOS ARM64 (Apple Silicon) | `xsfx-aarch64-apple-darwin.tar.gz` |
+| Windows x64 (MinGW) | `xsfx-x86_64-pc-windows-gnu.zip` |
+| Windows x64 (MSVC) | `xsfx-x86_64-pc-windows-msvc.zip` |
+| Windows ARM64 (MSVC) | `xsfx-aarch64-pc-windows-msvc.zip` |
+
+## 2. Platform-Specific Installation
 
 ### Linux / macOS
 
 ```bash
-tar -xzf xsfx-<platform>.tar.gz
-chmod +x xsfx-packed   # or xsfx, depending on archive contents
-mv xsfx-packed /usr/local/bin/xsfx
+# Download and extract (example: Linux x64)
+curl -sSfL https://github.com/neemle/xsfx/releases/latest/download/xsfx-x86_64-unknown-linux-gnu.tar.gz \
+    | tar xzf - -C /usr/local/bin
+
+# Verify
+xsfx --help
 ```
 
 ### Windows
 
-Extract `xsfx-windows-x64.zip` and place the `.exe` in a directory on your PATH.
+1. Download the `.zip` for your architecture from the releases page
+2. Extract `xsfx.exe` to a directory in your `PATH`
+3. Verify: `xsfx --help`
 
-## Build from Source
+## 3. Build from Source
 
 ### Prerequisites
 
-- Rust stable toolchain (1.76+)
-- Linux: `pkg-config`, `liblzma-dev` (for `native-compress`)
+- Rust 1.76+ (`rustup install stable`)
+- C compiler (gcc, clang, or MSVC)
 
-### Steps
+### Build
 
 ```bash
-# 1. Clone
-git clone <repo-url>
+git clone https://github.com/neemle/xsfx.git
 cd xsfx
-
-# 2. Build stub
-cargo build --release --bin stub
-
-# 3. Build packer with embedded stub
-export XSFX_STUB_PATH="$(pwd)/target/release/stub"
 cargo build --release --bin xsfx --features native-compress
-
-# 4. Binary is at target/release/xsfx
 ```
 
-## Usage
+The binary will be at `target/release/xsfx` (or `target\release\xsfx.exe` on Windows).
+
+### Build without native liblzma
+
+```bash
+cargo build --release --bin xsfx --no-default-features
+```
+
+This uses the pure-Rust lzma-rs for compression (lower compression ratio, no C compiler needed).
+
+## 4. Usage
+
+### Pack a binary
 
 ```bash
 xsfx <input_payload> <output_sfx>
 ```
 
-**Example:**
+Example:
 
 ```bash
-xsfx my-app my-app-sfx
-chmod +x my-app-sfx    # Unix only
-./my-app-sfx --some-flag
+xsfx myapp myapp-sfx
+chmod +x myapp-sfx
+./myapp-sfx
 ```
 
-The output SFX binary will decompress and execute the original payload, forwarding
-all CLI arguments.
-
-## Verification
-
-Run the packed SFX to verify it works:
+### Pack for a different target
 
 ```bash
-./my-app-sfx --version
+xsfx myapp myapp-sfx.exe --target x86_64-pc-windows-msvc
 ```
 
-The output should match running the original payload directly.
+### List available targets
 
-## Troubleshooting
+```bash
+xsfx --list-targets
+```
 
-- **"Permission denied"** on Unix: `chmod +x <sfx-binary>`
-- **Payload fails to launch:** Ensure the payload matches the stub target (same
-  OS and architecture).
-- **Windows SFX creation:** Must use the Windows-built packer on Windows.
+### Pipe support
+
+Use `-` for stdin or stdout:
+
+```bash
+# Read payload from stdin
+cat myapp | xsfx - myapp-sfx
+
+# Write SFX to stdout
+xsfx myapp - > myapp-sfx
+
+# Both — full pipe
+cat myapp | xsfx - - > myapp-sfx
+
+# Pipe over SSH
+xsfx myapp - --target x86_64-unknown-linux-gnu | ssh server 'cat > /usr/local/bin/myapp-sfx && chmod +x /usr/local/bin/myapp-sfx'
+```
+
+### Run the packed SFX
+
+The output SFX binary runs like any normal executable. All CLI arguments are forwarded to the payload:
+
+```bash
+./myapp-sfx --verbose --config /etc/myapp.conf
+```
+
+## 5. Verification
+
+After packing, verify the SFX works correctly:
+
+```bash
+# Pack
+xsfx myapp myapp-sfx
+
+# Run original
+./myapp --version
+
+# Run SFX — should produce identical output
+./myapp-sfx --version
+```
+
+## 6. Troubleshooting
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| `"Invalid SFX magic marker"` | Corrupted SFX binary | Re-pack from original payload |
+| `"File too small to contain trailer"` | Truncated SFX file | Re-download or re-pack |
+| `Permission denied` | Missing execute permission | `chmod +x <sfx>` |
+| `memfd_create: Operation not permitted` | Kernel restricts memfd in container | Ensure `SYS_PTRACE` cap or use a kernel >= 3.17 |
+| Windows: `"Failed to load DLL"` | Missing runtime DLL dependency | Install required Visual C++ redistributable |
+| macOS: `"Failed to create object file image"` | macOS code signing issue | Sign the SFX binary or allow unsigned execution |
