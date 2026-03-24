@@ -9,7 +9,7 @@ Contributions are welcome. This document describes how to contribute effectively
 3. Clone the repository and run tests:
 
 ```bash
-git clone https://github.com/neemle/xsfx.git
+git clone https://github.com/ratushnyi-labs/xsfx.git
 cd xsfx
 docker compose run --build --rm test
 ```

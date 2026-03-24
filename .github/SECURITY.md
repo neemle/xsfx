@@ -12,7 +12,7 @@ If you discover a security vulnerability in xsfx, please report it responsibly.
 
 **Do NOT open a public issue.** Instead, use one of these methods:
 
-1. **GitHub Security Advisories** (preferred): [Report a vulnerability](https://github.com/neemle/xsfx/security/advisories/new)
+1. **GitHub Security Advisories** (preferred): [Report a vulnerability](https://github.com/ratushnyi-labs/xsfx/security/advisories/new)
 2. **Email**: Contact the maintainers privately
 
 ## Response Timeline

@@ -2,7 +2,7 @@
 
 ## 1. Download Pre-built Binaries
 
-Pre-built binaries are available from [GitHub Releases](https://github.com/neemle/xsfx/releases).
+Pre-built binaries are available from [GitHub Releases](https://github.com/ratushnyi-labs/xsfx/releases).
 
 Available platforms:
 
@@ -21,7 +21,7 @@ Available platforms:
 
 ```bash
 # Download and extract (example: Linux x64)
-curl -sSfL https://github.com/neemle/xsfx/releases/latest/download/xsfx-x86_64-unknown-linux-musl.tar.gz \
+curl -sSfL https://github.com/ratushnyi-labs/xsfx/releases/latest/download/xsfx-x86_64-unknown-linux-musl.tar.gz \
     | tar xzf - -C /usr/local/bin
 
 # Verify
@@ -44,7 +44,7 @@ xsfx --help
 ### Build
 
 ```bash
-git clone https://github.com/neemle/xsfx.git
+git clone https://github.com/ratushnyi-labs/xsfx.git
 cd xsfx
 cargo build --release --bin xsfx --features native-compress
 ```
@@ -102,7 +102,7 @@ xsfx myapp - > myapp-sfx
 cat myapp | xsfx - - > myapp-sfx
 
 # Pipe over SSH
-xsfx myapp - --target x86_64-unknown-linux-gnu | ssh server 'cat > /usr/local/bin/myapp-sfx && chmod +x /usr/local/bin/myapp-sfx'
+xsfx myapp - --target x86_64-unknown-linux-musl | ssh server 'cat > /usr/local/bin/myapp-sfx && chmod +x /usr/local/bin/myapp-sfx'
 ```
 
 ### Run the packed SFX

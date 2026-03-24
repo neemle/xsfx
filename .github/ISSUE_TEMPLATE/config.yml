@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/neemle/xsfx/tree/main/docs
+    url: https://github.com/ratushnyi-labs/xsfx/tree/main/docs
     about: Check the documentation before opening an issue
