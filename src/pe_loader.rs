@@ -198,7 +198,13 @@ fn parse_optional_header(data: &[u8], opt: usize) -> io::Result<(u32, u64, u32, 
     let section_alignment = read_u32(data, opt + 32)?;
     let size_of_image = read_u32(data, opt + 56)?;
     let num_dirs = read_u32(data, opt + 108)? as usize;
-    Ok((entry_point_rva, image_base, section_alignment, size_of_image, num_dirs))
+    Ok((
+        entry_point_rva,
+        image_base,
+        section_alignment,
+        size_of_image,
+        num_dirs,
+    ))
 }
 
 /// Parse PE headers from raw bytes. Cross-platform (pure byte parsing).

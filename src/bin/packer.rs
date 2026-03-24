@@ -102,7 +102,10 @@ fn main() -> io::Result<()> {
     if args.output_path != "-" {
         eprintln!(
             "Created SFX: {} (target: {}, stub: {} bytes, payload: {} bytes compressed)",
-            args.output_path, args.target, stub_bytes.len(), compressed_len
+            args.output_path,
+            args.target,
+            stub_bytes.len(),
+            compressed_len
         );
     }
     Ok(())

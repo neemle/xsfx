@@ -180,7 +180,7 @@ jobs:
           SRC="target/${{ matrix.target }}/release/xsfx${{ matrix.ext }}"
           DEST="xsfx-${{ matrix.target }}${{ matrix.ext }}"
           cp "$SRC" "$DEST"
-          [[ -z "${{ matrix.ext }}" ]] && chmod +x "$DEST"
+          if [[ -z "${{ matrix.ext }}" ]]; then chmod +x "$DEST"; fi
 
       - uses: actions/upload-artifact@v4
         with:

@@ -366,7 +366,9 @@ fn test_sec_uc001_empty_stub_valid_payload() {
 #[test]
 fn test_sec_uc001_uc002_high_entropy_payload() {
     // Payload with high entropy (pseudo-random) — worst case for compression
-    let payload: Vec<u8> = (0..10_000u32).map(|i| (i.wrapping_mul(2654435761) >> 24) as u8).collect();
+    let payload: Vec<u8> = (0..10_000u32)
+        .map(|i| (i.wrapping_mul(2654435761) >> 24) as u8)
+        .collect();
     let compressed = compress_lzma(&payload).unwrap();
     let mut reader = BufReader::new(Cursor::new(&compressed));
     let result = decompress_payload(&mut reader).unwrap();
