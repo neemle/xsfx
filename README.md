@@ -14,13 +14,10 @@ Each packer binary embeds stubs for all targets available at build time. The tar
 
 | Target | Arch | Execution Method |
 |---|---|---|
-| `x86_64-unknown-linux-gnu` | x64 | `memfd_create` + `execveat` |
-| `aarch64-unknown-linux-gnu` | ARM64 | `memfd_create` + `execveat` |
 | `x86_64-unknown-linux-musl` | x64 | `memfd_create` + `execveat` |
 | `aarch64-unknown-linux-musl` | ARM64 | `memfd_create` + `execveat` |
 | `x86_64-apple-darwin` | x64 | `NSCreateObjectFileImageFromMemory` |
 | `aarch64-apple-darwin` | ARM64 | `NSCreateObjectFileImageFromMemory` |
-| `x86_64-pc-windows-gnu` | x64 | In-process PE loader |
 | `x86_64-pc-windows-msvc` | x64 | In-process PE loader |
 | `aarch64-pc-windows-msvc` | ARM64 | In-process PE loader |
 

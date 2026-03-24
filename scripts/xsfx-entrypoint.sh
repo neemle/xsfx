@@ -15,10 +15,10 @@ rm -rf "$STUBS_DIR"
 mkdir -p "$DIST_DIR" "$STUBS_DIR"
 
 # Stub targets (all platforms)
-read -r -a ALL_STUBS <<< "${ALL_STUBS:-x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-gnu x86_64-pc-windows-msvc aarch64-pc-windows-msvc}"
+read -r -a ALL_STUBS <<< "${ALL_STUBS:-x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc}"
 
 # Packer targets (platforms we can build the packer for from Linux)
-read -r -a PACKER_TARGETS <<< "${PACKER_TARGETS:-x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-gnu x86_64-pc-windows-msvc aarch64-pc-windows-msvc}"
+read -r -a PACKER_TARGETS <<< "${PACKER_TARGETS:-x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc}"
 
 # ---------------------------------------------------------------------------
 # Phase 1: Build stubs with nightly + build-std + UPX for minimal size

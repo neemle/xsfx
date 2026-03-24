@@ -90,17 +90,14 @@ The stub optimization pipeline (run in the cross-build Docker container):
 
 ## 6. Static Linking Configuration
 
-| Target | Linker | Static Linking Method |
-|--------|--------|----------------------|
-| `x86_64-unknown-linux-gnu` | `cc` | Default (glibc dynamic) |
-| `aarch64-unknown-linux-gnu` | `aarch64-linux-gnu-gcc` | Default |
-| `x86_64-unknown-linux-musl` | `musl-gcc` | `-C target-feature=+crt-static` |
-| `aarch64-unknown-linux-musl` | `aarch64-linux-musl-gcc` (zig) | `-C target-feature=+crt-static` |
-| `x86_64-pc-windows-gnu` | `x86_64-w64-mingw32-gcc` | `-C target-feature=+crt-static` |
-| `x86_64-pc-windows-msvc` | `lld-link` | `-C target-feature=+crt-static` |
-| `aarch64-pc-windows-msvc` | `lld-link` | `-C target-feature=+crt-static` |
-| `x86_64-apple-darwin` | `o64-clang` | System frameworks |
-| `aarch64-apple-darwin` | `oa64-clang` | System frameworks |
+| Target | Static Linking Method |
+|--------|----------------------|
+| `x86_64-unknown-linux-musl` | `-C target-feature=+crt-static` (static-pie, zero runtime deps) |
+| `aarch64-unknown-linux-musl` | `-C target-feature=+crt-static` (static-pie, zero runtime deps) |
+| `x86_64-pc-windows-msvc` | `-C target-feature=+crt-static` |
+| `aarch64-pc-windows-msvc` | `-C target-feature=+crt-static` |
+| `x86_64-apple-darwin` | System frameworks (default static) |
+| `aarch64-apple-darwin` | System frameworks (default static) |
 
 ## 7. Cross-Build Toolchain
 

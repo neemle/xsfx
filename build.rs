@@ -14,13 +14,10 @@ use std::time::Instant;
 ///   XSFX_PREBUILT_STUBS_DIR=path  → use pre-built stubs instead of building
 ///   XSFX_SKIP_STUB_BUILD=1        → generate empty catalog (for tests/clippy)
 const ALL_TARGETS: &[&str] = &[
-    "x86_64-unknown-linux-gnu",
-    "aarch64-unknown-linux-gnu",
     "x86_64-unknown-linux-musl",
     "aarch64-unknown-linux-musl",
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
-    "x86_64-pc-windows-gnu",
     "x86_64-pc-windows-msvc",
     "aarch64-pc-windows-msvc",
 ];

@@ -8,15 +8,12 @@ Available platforms:
 
 | Platform | File |
 |----------|------|
-| Linux x64 (glibc) | `xsfx-x86_64-unknown-linux-gnu.tar.gz` |
-| Linux ARM64 (glibc) | `xsfx-aarch64-unknown-linux-gnu.tar.gz` |
-| Linux x64 (musl, static) | `xsfx-x86_64-unknown-linux-musl.tar.gz` |
-| Linux ARM64 (musl, static) | `xsfx-aarch64-unknown-linux-musl.tar.gz` |
+| Linux x64 (static) | `xsfx-x86_64-unknown-linux-musl.tar.gz` |
+| Linux ARM64 (static) | `xsfx-aarch64-unknown-linux-musl.tar.gz` |
 | macOS x64 | `xsfx-x86_64-apple-darwin.tar.gz` |
 | macOS ARM64 (Apple Silicon) | `xsfx-aarch64-apple-darwin.tar.gz` |
-| Windows x64 (MinGW) | `xsfx-x86_64-pc-windows-gnu.zip` |
-| Windows x64 (MSVC) | `xsfx-x86_64-pc-windows-msvc.zip` |
-| Windows ARM64 (MSVC) | `xsfx-aarch64-pc-windows-msvc.zip` |
+| Windows x64 | `xsfx-x86_64-pc-windows-msvc.zip` |
+| Windows ARM64 | `xsfx-aarch64-pc-windows-msvc.zip` |
 
 ## 2. Platform-Specific Installation
 
@@ -24,7 +21,7 @@ Available platforms:
 
 ```bash
 # Download and extract (example: Linux x64)
-curl -sSfL https://github.com/neemle/xsfx/releases/latest/download/xsfx-x86_64-unknown-linux-gnu.tar.gz \
+curl -sSfL https://github.com/neemle/xsfx/releases/latest/download/xsfx-x86_64-unknown-linux-musl.tar.gz \
     | tar xzf - -C /usr/local/bin
 
 # Verify

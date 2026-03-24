@@ -45,13 +45,10 @@ A `build.rs` script compiles stubs for each target platform and generates a `stu
 
 | Target | Arch | Execution Method |
 |--------|------|------------------|
-| `x86_64-unknown-linux-gnu` | x64 | `memfd_create` + `execveat` |
-| `aarch64-unknown-linux-gnu` | ARM64 | `memfd_create` + `execveat` |
 | `x86_64-unknown-linux-musl` | x64 | `memfd_create` + `execveat` |
 | `aarch64-unknown-linux-musl` | ARM64 | `memfd_create` + `execveat` |
 | `x86_64-apple-darwin` | x64 | `NSCreateObjectFileImageFromMemory` |
 | `aarch64-apple-darwin` | ARM64 | `NSCreateObjectFileImageFromMemory` |
-| `x86_64-pc-windows-gnu` | x64 | In-process PE loader |
 | `x86_64-pc-windows-msvc` | x64 | In-process PE loader |
 | `aarch64-pc-windows-msvc` | ARM64 | In-process PE loader |
 
@@ -241,8 +238,8 @@ On Linux, argv[0] is inherited from the `execveat` call. On macOS, the original 
 ### BR-010: Static Linking Policy
 
 All stub binaries MUST be statically linked:
-- Linux musl: `-C target-feature=+crt-static` with the system linker (not `musl-gcc` or zig for the stub itself — Rust's built-in musl support produces correct static-pie binaries)
-- Windows: `-C target-feature=+crt-static`
+- Linux musl: `-C target-feature=+crt-static` (static-pie binaries, zero runtime dependencies)
+- Windows MSVC: `-C target-feature=+crt-static`
 - macOS: system frameworks (statically linked by default)
 
 ### BR-011: Windows In-Memory PE Execution
